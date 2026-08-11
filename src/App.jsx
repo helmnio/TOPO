@@ -10,7 +10,7 @@ import { ENABLE_TEST_FEATURES } from './config/environment';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/play" element={<Play />} />
