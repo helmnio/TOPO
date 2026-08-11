@@ -1,0 +1,37 @@
+============================================================
+MAJOR GAMEPLAY VERSION CHANGE — ICONS + ROTATION (V2)
+============================================================
+
+Status: Active Daily ruleset during development
+Previous ruleset: Colour Only (V1)
+New ruleset: Icons + Rotation (V2)
+
+WHAT CHANGED
+
+- The Icons + Rotation ruleset now powers the Daily TOPO.
+- Six map symbols are generated from palette groups used by the puzzle.
+- Symbols appear in fragments and must also be placed on the completed map.
+- Fragments begin at quarter-turn rotations and can be rotated clockwise.
+- One fragment carries a north/navigation marker and begins north-up.
+- Selected groups of map tiles can be rotated clockwise.
+- Each puzzle has three overlap hints.
+- Correct completion requires the original north-up map orientation, correct
+  colours, and correct symbol positions.
+- Daily, current-streak, and lifetime hint usage is recorded in Stats.
+
+PRESERVED LEGACY GAMEPLAY
+
+The original Colour Only ruleset has not been deleted. Both rule profiles live
+in src/config/gameplayRules.js:
+
+- color-only-v1: original colour placement gameplay
+- icon-rotate-v2: symbols, rotations, north marker, and hints
+
+ACTIVE_DAILY_RULESET controls which profile is used for the Daily game. This
+keeps the original gameplay available for comparison, regression testing, or a
+future classic mode without maintaining a separate public game mode today.
+
+STATS MIGRATION
+
+Existing Daily totals, wins, streaks, accuracy, and timing data are preserved.
+Hint fields are additive and default to zero for games completed before V2.

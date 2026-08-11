@@ -1,0 +1,435 @@
+TOPO SYMBOL GAMEPLAY PLAN
+=========================
+
+PURPOSE
+-------
+
+Add an original cartographic symbol system to TOPO. Symbols should make the
+game feel more like reconstructing a real mapped place while adding a second
+layer of spatial deduction to the existing colour puzzle.
+
+The first implementation must be limited to Random/Test puzzles. Daily puzzle
+generation, Daily results and Daily statistics must remain unchanged until the
+symbol experiment has been tested and approved.
+
+
+CORE MECHANIC
+-------------
+
+The current Test variant contains six unique landmark symbols.
+
+Example symbols:
+
+- Tree
+- Bridge
+- Tower
+- Viewpoint
+
+Each symbol belongs to one specific cell on the completed 5x5 map. The player
+must reconstruct the coloured map and place every symbol in its correct final
+location.
+
+Every symbol initially appears exactly once across the visible fragments.
+Players determine its final location by working out where that fragment belongs
+on the completed map.
+
+A complete solution therefore requires:
+
+1. All 25 tile colours to be correct.
+2. All six landmark symbols to be correctly positioned.
+
+
+TEST PUZZLE SETUP
+-----------------
+
+Recommended starting configuration:
+
+- Six unique landmark locations per Test puzzle.
+- Each landmark is initially visible in one fragment only.
+- Two landmarks may later be selected as optional hint landmarks.
+- Two hints are available per puzzle.
+- Each hint reveals a duplicate occurrence of one landmark in an overlapping
+  fragment.
+- Hints are optional and the puzzle must remain solvable without them.
+- Revealed hints persist after refresh or reopening the game.
+
+
+HINT BEHAVIOUR
+--------------
+
+A hint does not reveal a symbol's final board position. It reveals the same
+symbol on another fragment containing the same underlying map cell.
+
+Example:
+
+- A tree initially appears in Fragment 2.
+- The player activates its hint.
+- The same tree is revealed in Fragment 6.
+- The player now knows those two fragment cells represent the same location.
+
+There is still only one tree to place on the completed map. The duplicate is an
+additional overlap clue, not an additional landmark.
+
+Each of the two hints should use a different symbol and preferably a different
+fragment pair.
+
+
+SYMBOL PLACEMENT
+----------------
+
+Add a compact landmark tray near the colour palette.
+
+Suggested interaction:
+
+1. Tap or click a symbol in the landmark tray.
+2. Tap or click a coloured board cell to place it.
+3. Select a placed symbol and another cell to move it.
+4. Use Erase to remove a symbol when required.
+5. Each symbol may exist on only one board cell.
+6. Moving a selected group of tiles should move any symbols attached to those
+   tiles with it.
+
+Symbols should appear as small, high-contrast overlays so that the tile colour
+remains easy to read.
+
+Symbol placement, selection and revealed hints must be saved as part of the
+Daily play session.
+
+
+PALETTE-GROUP ICON ASSIGNMENT
+-----------------------------
+
+The existing palette contains 20 group instances:
+
+- Five colour families: green, blue, brown, grey and sand.
+- Four levels: dark, mid, light and pale.
+- Five families multiplied by four levels gives 20 palette groups.
+
+Each palette-group instance receives exactly two fixed map-related icons during
+the initial Test implementation.
+
+  20 palette groups x 2 icons = 40 icons
+
+Examples:
+
+- dark-green: two Dense Forest icons
+- mid-green: two Woodland icons
+- light-green: two Meadow icons
+- pale-green: two Open Field icons
+- dark-blue: two Deep Water icons
+- light-blue: two Shallow Water icons
+
+The association is made with the specific palette group, not only its broad
+colour family. An icon assigned to dark-green is not automatically available to
+mid-green, light-green or pale-green.
+
+
+BOARD-DRIVEN ICON SELECTION
+---------------------------
+
+The six Test-puzzle icons must be selected only from palette-group instances
+that are actually used by cells in the generated answer board.
+
+The palette list alone is not enough. If a palette group is available in the
+generated palette but no answer cell uses it, neither of its icons may be
+selected for that puzzle.
+
+Selection process:
+
+1. Read the 25 answer cells.
+2. Determine which palette-group instance belongs to every cell.
+3. Build the set of palette groups that are genuinely present on the board.
+4. Select six suitable answer cells from those present groups.
+5. Select one of the two fixed icons belonging to each selected cell's group.
+6. Attach each icon to that exact answer-cell index.
+7. Display each selected icon exactly once among all fragments initially.
+
+Initial balancing preference:
+
+- Use six different palette-group instances where possible.
+- Use six visually distinct icons.
+- Spread the answer cells across different regions of the board.
+- Avoid selecting adjacent cells where possible.
+- Do not use an icon associated with a colour group absent from the answer.
+- Do not select both icons from the same group in the first prototype unless
+  there are too few valid groups available.
+
+This ensures every landmark is semantically compatible with the terrain beneath
+it and prevents the game from showing an icon for a colour that does not exist
+on that map.
+
+
+COLOUR COMPATIBILITY
+--------------------
+
+Symbols can be associated with compatible colour categories to keep the map
+visually logical and narrow the placement choices without revealing the exact
+answer.
+
+Example categories:
+
+- Green: tree, forest, campsite
+- Blue: bridge, spring, water feature
+- Brown: viewpoint, hill, monument
+- Grey: building, tower, crossing
+
+For example, a tree could only be placed on a compatible green tile.
+
+The puzzle generator should select symbols after the map and palette have been
+generated so every selected symbol has suitable candidate cells.
+
+
+SEMANTIC PALETTE TITLES
+-----------------------
+
+Every colour in a generated palette should have a semantic terrain title in
+addition to its visual colour value.
+
+Example palette entries:
+
+- Dark green: Dense Forest
+- Mid green: Woodland
+- Light green: Meadow
+- Dark blue: Deep Water
+- Light blue: Shallow Water
+- Dark brown: High Ground
+- Light brown: Open Earth
+- Grey: Settlement
+
+Instead of treating the palette as a list of colour strings, the future puzzle
+data should conceptually treat each palette entry as an object:
+
+  {
+    id: "dense-forest",
+    colour: "#1f5c3a",
+    category: "green",
+    title: "Dense Forest"
+  }
+
+The stable ID should drive saved game data and puzzle comparison. The colour is
+the presentation value, the category controls compatible symbols, and the title
+provides the human-readable terrain meaning.
+
+
+25-CELL TERRAIN PROFILE
+-----------------------
+
+Each of the 25 answer cells inherits the semantic title of its palette entry.
+This gives every completed 5x5 puzzle a full terrain profile containing 25
+meaningful values rather than only 25 colour codes.
+
+Example cell profile:
+
+- 8 Dense Forest cells
+- 6 Woodland cells
+- 4 Meadow cells
+- 3 Deep Water cells
+- 2 Shallow Water cells
+- 2 Settlement cells
+
+The profile can be used for:
+
+- Generating an appropriate map name.
+- Writing a short map description.
+- Selecting compatible landmark symbols.
+- Avoiding contradictory symbol and terrain combinations.
+- Classifying maps by dominant landscape type.
+- Producing more meaningful Daily and Weekly archive entries.
+
+
+GENERATED MAP NAMES
+-------------------
+
+Map names should be derived from the actual terrain profile, landmark symbols
+and spatial relationships within the answer.
+
+The naming system should consider:
+
+- Dominant terrain title.
+- Secondary terrain title.
+- Rare or distinctive terrain.
+- Landmark symbols present.
+- Whether water, forest, settlement or high ground forms a notable cluster.
+- The relative position of important features, such as north, centre or edge.
+
+Example generated names:
+
+- Deepwood Crossing
+- Willowmere
+- High Forest Watch
+- Bridge at Greenwater
+- Stone Tower Meadow
+- Northwood Springs
+- The Shallow Ford
+- Densewood Lookout
+
+A useful naming formula could combine one terrain term with one feature term:
+
+  [Terrain descriptor] + [Landmark or geographic feature]
+
+Examples:
+
+  Dense Forest + Bridge = Deepwood Bridge
+  High Ground + Tower = Highwatch Tower
+  Meadow + Spring = Meadow Spring
+
+Names should not be selected from colour alone. A bridge name should only be
+available when a bridge symbol exists, and a water-based name should only be
+used when the map contains enough connected water cells to justify it.
+
+Generated names must be deterministic for the puzzle seed so every player sees
+the same name for the same Daily map.
+
+
+MAP TITLE PRESENTATION
+----------------------
+
+The generated map title can be revealed after submission so it does not provide
+an unintended clue before the puzzle is solved.
+
+Possible result presentation:
+
+  Today's map: Deepwood Crossing
+  Dense forest surrounding a shallow-water bridge.
+
+The title can also appear in:
+
+- Results history.
+- Weekly archives.
+- Share text, if it does not reveal the active puzzle too early.
+- Control and puzzle-health tools.
+- Internal puzzle review and regeneration screens.
+
+The generator should also retain a fallback neutral title when a strong semantic
+name cannot be produced. It should avoid awkward, repetitive or contradictory
+combinations and maintain a list of recently used names to reduce repetition.
+
+
+SUBMISSION RULES
+----------------
+
+Submission should require:
+
+- All 25 tile colours to be filled.
+- All six landmark symbols to be placed.
+- Every landmark to be placed on a compatible colour category.
+
+The one-attempt confirmation should explicitly mention both layers:
+
+"You have one attempt. Check all colours and landmarks before submitting."
+
+A full Daily win requires both the colour map and all landmark positions to be
+correct.
+
+
+RESULTS
+-------
+
+The result screen should report the two puzzle layers separately:
+
+- Tiles correct: 25/25
+- Landmarks correct: 6/6
+- Hints used: 0/2, 1/2 or 2/2
+- Completion time
+- Current streak and streak change
+- Time compared with the player's pre-game lifetime average
+
+The submitted map and correct map should both display their landmark symbols.
+
+Using a hint should not prevent a win or reset a streak. Hint usage is recorded
+as part of the result only.
+
+
+STATISTICS
+----------
+
+Possible Daily and lifetime statistics:
+
+- Today's tile accuracy
+- Today's landmarks correct
+- Today's hints used
+- Average tile accuracy
+- Average landmark accuracy
+- Total hint-free solves
+- Average hints used per submitted puzzle
+
+These should supplement, not replace, the existing game, time and streak
+statistics.
+
+
+GENERATOR REQUIREMENTS
+----------------------
+
+Every landmark cell should:
+
+- Match its symbol's colour category.
+- Appear in at least two fragments.
+- Display its symbol in exactly one fragment initially.
+- Have one hidden duplicate occurrence available when used as a hint landmark.
+- Avoid creating an overly obvious overlap.
+- Remain logically placeable without using its hint.
+
+Across the complete set of six landmarks:
+
+- Use six different symbols.
+- Avoid placing too many symbols next to one another.
+- Prefer coverage across different regions of the 5x5 map.
+- Use different fragment pairs for the two hint landmarks where possible.
+- Validate that symbols and hidden hints are deterministic for the Daily seed.
+- Include symbol and hint checks in puzzle-health tooling.
+
+
+ORIGINAL SYMBOL SYSTEM
+----------------------
+
+Use Google Material Symbols for the Test prototype. Only map-related symbols
+that resemble features likely to appear on a topographic map should be chosen.
+An original TOPO cartographic icon family can replace them after the mechanic
+has been validated.
+
+Initial Test library target: 40 symbols, consisting of exactly two symbols for
+each of the 20 palette-group instances.
+
+Visual requirements:
+
+- Clear at small mobile sizes.
+- Consistent stroke weight and proportions.
+- High contrast over every compatible tile colour.
+- Recognisable without text labels during play.
+- Distinct silhouettes so symbols cannot be easily confused.
+- Suitable for fragments, the main board, mini maps and shared results.
+
+
+TESTING AND INTRODUCTION
+------------------------
+
+Introduce the mechanic in stages:
+
+1. Prototype six symbols with manual test puzzles.
+2. Test symbol selection, placement, moving and erasing.
+3. Test session saving and restoration.
+4. Test a puzzle with six visible symbols and no hints.
+5. Add one duplicate-overlap hint.
+6. Expand to two hints after confirming that one hint does not reveal too much.
+7. Integrate deterministic symbol selection into the generator.
+8. Add symbol and hint information to results and statistics.
+9. Update the Learn page with an interactive symbol example.
+
+Random/Test mode should retain all existing tools and gain controls for forcing
+symbols, revealing hints and testing landmark accuracy. Random/Test results must
+remain separate from Daily statistics and streaks.
+
+
+FUTURE WEEKLY MODE
+------------------
+
+The same symbol system can support a larger Weekly TOPO:
+
+- 7x7 board.
+- Rotated fragments.
+- Approximately 7 to 10 landmark locations.
+- Three or four shared-symbol overlap hints.
+- Separate Weekly results and streaks.
+
+The Daily implementation should keep its symbol data reusable so the future
+Weekly mode can use the same icon library, placement controls and hint logic.
