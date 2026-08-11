@@ -4,6 +4,10 @@ TOPO is a daily map puzzle built with React and Vite. Players reconstruct a
 5×5 map from overlapping, rotated fragments, place map symbols, and use the
 north marker to complete the map in its correct orientation.
 
+## Play
+
+**[Play TOPO on GitHub Pages](https://helmnio.github.io/TOPO/)**
+
 ## Production
 
 Production builds contain the Daily game, Learn page, statistics, symbols,
