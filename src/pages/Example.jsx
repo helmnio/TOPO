@@ -635,6 +635,32 @@ function Example() {
               </button>
             </div>
 
+            <div className="landmark-picker">
+              <span className="landmark-picker__label landmark-picker__label--full">
+                Map symbols
+              </span>
+              <div className="landmark-palette" aria-label="Map symbols">
+                {landmarks.map((landmark) => (
+                  <button
+                    key={landmark.id}
+                    type="button"
+                    className={`landmark-palette__item ${
+                      mapLandmarks.includes(landmark.id) ? 'is-placed' : ''
+                    }`}
+                    onClick={() => applyLandmarkToSelectedCell(landmark)}
+                    aria-label={landmark.label}
+                  >
+                    <span
+                      className="material-symbols-outlined topo-landmark-icon"
+                      aria-hidden="true"
+                    >
+                      {landmark.icon}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div ref={mapGridRef} className="map-grid">
               {mapCells.map((cellColor, index) => {
                 const isSelected = previewSelectedSet.has(index);
@@ -733,33 +759,6 @@ function Example() {
                 />
               ))}
             </div>
-
-            <div className="landmark-picker">
-              <span className="landmark-picker__label landmark-picker__label--full">
-                Map symbols
-              </span>
-              <div className="landmark-palette" aria-label="Map symbols">
-                {landmarks.map((landmark) => (
-                  <button
-                    key={landmark.id}
-                    type="button"
-                    className={`landmark-palette__item ${
-                      mapLandmarks.includes(landmark.id) ? 'is-placed' : ''
-                    }`}
-                    onClick={() => applyLandmarkToSelectedCell(landmark)}
-                    aria-label={landmark.label}
-                  >
-                    <span
-                      className="material-symbols-outlined topo-landmark-icon"
-                      aria-hidden="true"
-                    >
-                      {landmark.icon}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
 
             <div className="game-fragments">
               <div className="fragment-panel">

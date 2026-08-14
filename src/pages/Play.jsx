@@ -1597,6 +1597,58 @@ const streakAverageTime =
               </div>
             )}
 
+            {usesMapFeatures && testLandmarks.length > 0 && (
+              <div className="landmark-picker">
+                <span className="landmark-picker__label">Map symbols</span>
+                <div className="landmark-picker__controls">
+                  <div className="landmark-palette" aria-label="Map symbols">
+                    {testLandmarks.map((landmark) => {
+                      const isPlaced = mapLandmarks.includes(landmark.id);
+
+                      return (
+                        <button
+                          key={landmark.id}
+                          type="button"
+                          className={`landmark-palette__item ${
+                            isPlaced ? 'is-placed' : ''
+                          }`}
+                          disabled={isLocked}
+                          aria-label={`${landmark.label}${
+                            isPlaced ? ', placed' : ''
+                          }`}
+                          onClick={() => applyLandmarkToSelectedCell(landmark)}
+                        >
+                          <span
+                            className="material-symbols-outlined topo-landmark-icon"
+                            aria-hidden="true"
+                          >
+                            {landmark.icon}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <span className="landmark-picker__divider" aria-hidden="true" />
+
+                  <button
+                    type="button"
+                    className="landmark-palette__item landmark-picker__rotate"
+                    disabled={isLocked || selectedCells.length < 2}
+                    onClick={rotateSelectedMapTilesClockwise}
+                    aria-label="Rotate selected map tiles 90 degrees clockwise"
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      aria-hidden="true"
+                    >
+                      rotate_right
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className={`board-layout ${
               usesMapFeatures ? 'board-layout--test' : ''
             }`}>
@@ -1721,58 +1773,6 @@ const streakAverageTime =
               ))}
             </div>
             </div>
-
-            {usesMapFeatures && testLandmarks.length > 0 && (
-              <div className="landmark-picker">
-                <span className="landmark-picker__label">Map symbols</span>
-                <div className="landmark-picker__controls">
-                  <div className="landmark-palette" aria-label="Map symbols">
-                    {testLandmarks.map((landmark) => {
-                      const isPlaced = mapLandmarks.includes(landmark.id);
-
-                      return (
-                        <button
-                          key={landmark.id}
-                          type="button"
-                          className={`landmark-palette__item ${
-                            isPlaced ? 'is-placed' : ''
-                          }`}
-                          disabled={isLocked}
-                          aria-label={`${landmark.label}${
-                            isPlaced ? ', placed' : ''
-                          }`}
-                          onClick={() => applyLandmarkToSelectedCell(landmark)}
-                        >
-                          <span
-                            className="material-symbols-outlined topo-landmark-icon"
-                            aria-hidden="true"
-                          >
-                            {landmark.icon}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <span className="landmark-picker__divider" aria-hidden="true" />
-
-                  <button
-                    type="button"
-                    className="landmark-palette__item landmark-picker__rotate"
-                    disabled={isLocked || selectedCells.length < 2}
-                    onClick={rotateSelectedMapTilesClockwise}
-                    aria-label="Rotate selected map tiles 90 degrees clockwise"
-                  >
-                    <span
-                      className="material-symbols-outlined"
-                      aria-hidden="true"
-                    >
-                      rotate_right
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="game-fragments">
               <div className="fragment-panel">
