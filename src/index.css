@@ -905,8 +905,7 @@ a:focus-visible {
 .board-layout--test {
   container-type: inline-size;
   display: grid;
-  grid-template-columns: minmax(0, 7.2fr) minmax(0, 1fr);
-  gap: 0.8cqw;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -1074,7 +1073,7 @@ a:focus-visible {
 
 .landmark-picker__controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px 40px;
+  grid-template-columns: minmax(0, 1fr) 1px 40px 40px;
   align-items: center;
   gap: 9px;
 }
@@ -1108,19 +1107,22 @@ a:focus-visible {
   background: var(--border-main);
 }
 
-.landmark-picker__rotate {
+.landmark-picker__rotate,
+.landmark-picker__remove {
   width: 100%;
   max-width: 40px;
   min-height: 34px;
   justify-self: center;
 }
 
-.landmark-picker__rotate:disabled {
+.landmark-picker__rotate:disabled,
+.landmark-picker__remove:disabled {
   cursor: default;
   opacity: 0.32;
 }
 
-.landmark-picker__rotate .material-symbols-outlined {
+.landmark-picker__rotate .material-symbols-outlined,
+.landmark-picker__remove .material-symbols-outlined {
   font-size: 28px;
   pointer-events: none;
 }
@@ -2012,4 +2014,106 @@ a:focus-visible {
 .results-modal .results-actions,
 .results-modal .results-actions * {
   pointer-events: auto;
+}
+
+
+/* FRAGMENT PLACEMENT */
+
+.map-board {
+  position: relative;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.map-board .map-grid {
+  margin-bottom: 0;
+  transition: opacity 0.2s ease;
+}
+
+.board-layout--test .map-board {
+  margin-bottom: 0;
+}
+
+.map-placement {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid transparent;
+  pointer-events: none;
+}
+
+.map-placement__cell {
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-placement__cell.is-filled {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  box-shadow:
+    inset 0 0 0 2px rgba(84, 84, 67, 0.5),
+    inset 0 0 0 4px rgba(255, 255, 255, 0.4);
+}
+
+.map-placement__cell.is-filled:active {
+  cursor: grabbing;
+}
+
+.play-surface--placing .map-grid {
+  opacity: 0.3;
+}
+
+.play-surface--placing .game-fragments .fragment-card {
+  transition: opacity 0.2s ease;
+}
+
+.play-surface--placing .game-fragments .fragment-card:not(.is-active) {
+  opacity: 0.3;
+}
+
+.game-fragments .fragment-card.is-active {
+  box-shadow: 0 0 0 2px var(--accent-dark);
+}
+
+.placement-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.placement-bar__hint {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+
+.placement-bar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.landmark-palette__item.is-armed {
+  box-shadow:
+    inset 0 0 0 2px rgba(84, 84, 67, 0.7),
+    inset 0 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.map-grid__cell.is-conflict,
+.map-placement__cell.is-filled.is-conflict {
+  box-shadow:
+    inset 0 0 0 3px #e5252a,
+    inset 0 0 0 5px rgba(255, 255, 255, 0.55);
+}
+
+.play-surface--placing .map-board {
+  touch-action: none;
 }
