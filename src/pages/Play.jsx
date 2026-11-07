@@ -6,6 +6,7 @@ import BottomNav from '../components/layout/BottomNav';
 import FragmentShape from '../components/play/FragmentShape';
 import SubmitConfirmModal from '../components/play/SubmitConfirmModal';
 import ResultsModal from '../components/play/ResultsModal';
+import { buildFragmentCellMatrix } from '../utils/fragments';
 
 import ShareButton from '../components/share/ShareButton';
 
@@ -16,12 +17,7 @@ import {
 
 import { getDailyPuzzle, getLocalDateKey } from '../data/puzzles';
 
-import {
-  GRID_SIZE,
-  TOTAL_CELLS,
-  indexToRowCol,
-  rowColToIndex,
-} from '../utils/grid';
+import { GRID_SIZE, TOTAL_CELLS } from '../utils/grid';
 
 import {
   shuffleRuntime,
@@ -74,6 +70,63 @@ function loadSelectedPuzzle(gameMode, dateKey) {
   } catch {
     return getDailyPuzzle(dateKey);
   }
+}
+
+function getGridMetrics(gridElement) {
+  const cells = gridElement?.querySelectorAll('[data-cell-index]');
+
+  if (!cells || cells.length < TOTAL_CELLS) return null;
+
+  const first = cells[0].getBoundingClientRect();
+  const last = cells[TOTAL_CELLS - 1].getBoundingClientRect();
+
+  return {
+    left: first.left,
+    top: first.top,
+    stepX: (last.left - first.left) / (GRID_SIZE - 1),
+    stepY: (last.top - first.top) / (GRID_SIZE - 1),
+  };
+}
+
+function paintPlacements(placements, fragmentItems, answer) {
+  const next = Array(TOTAL_CELLS).fill(null);
+
+  placements.forEach((entry) => {
+    const item = fragmentItems.find((fragment) => fragment.id === entry.id);
+
+    if (!item) return;
+
+    buildFragmentCellMatrix(item, answer, [], entry.rotation).forEach(
+      (row, rowIndex) => {
+        row.forEach((cell, colIndex) => {
+          if (!cell.color) return;
+
+          next[(entry.row + rowIndex) * GRID_SIZE + entry.col + colIndex] =
+            cell.color;
+        });
+      }
+    );
+  });
+
+  return next;
+}
+
+// Topmost (most recently placed) fragment covering a map square.
+function findPlacementAt(placements, index, fragmentItems, answer) {
+  for (let i = placements.length - 1; i >= 0; i -= 1) {
+    const entry = placements[i];
+    const item = fragmentItems.find((fragment) => fragment.id === entry.id);
+
+    if (!item) continue;
+
+    const matrix = buildFragmentCellMatrix(item, answer, [], entry.rotation);
+    const row = Math.floor(index / GRID_SIZE) - entry.row;
+    const col = (index % GRID_SIZE) - entry.col;
+
+    if (matrix[row]?.[col]?.color) return entry;
+  }
+
+  return null;
 }
 
 function swapItems(array, fromIndex, toIndex) {
@@ -276,6 +329,10 @@ function Play() {
   });
 
   const [fragmentDrag, setFragmentDrag] = useState(null);
+  const [activeFragmentId, setActiveFragmentId] = useState(null);
+  const [placement, setPlacement] = useState({ row: 0, col: 0 });
+  const [isPlacementDragging, setIsPlacementDragging] = useState(false);
+  const placementDragRef = useRef(null);
 
   const [mapCells, setMapCells] = useState(() => {
     const savedMap = initialSession?.mapCells;
@@ -298,37 +355,29 @@ function Play() {
       : Array(TOTAL_CELLS).fill(null);
   });
   const mapLandmarksRef = useRef(mapLandmarks);
-  const mapRotationSessionRef = useRef(null);
-  const mapRotationAnimatingRef = useRef(false);
   const fragmentRotationAnimatingRef = useRef(new Set());
 
-  const [selectedCells, setSelectedCells] = useState([]);
-  const [dragState, setDragState] = useState(null);
+  const [placements, setPlacements] = useState(() => {
+    const saved = initialSession?.placements;
+
+    return Array.isArray(saved)
+      ? saved.filter(
+          (entry) =>
+            defaultFragmentOrder.includes(entry?.id) &&
+            Number.isInteger(entry.row) &&
+            Number.isInteger(entry.col) &&
+            Number.isInteger(entry.rotation)
+        )
+      : [];
+  });
+  const placementsRef = useRef(placements);
+  const [armedLandmarkId, setArmedLandmarkId] = useState(null);
   const [history, setHistory] = useState(initialSession?.history || []);
   const [isSolved, setIsSolved] = useState(initialSession?.isSolved || false);
 
   const [isSubmitted, setIsSubmitted] = useState(
     initialSession?.isSubmitted || false
   );
-
-  useEffect(() => {
-    const handleOutsideMapClick = (event) => {
-      if (!(event.target instanceof Element)) return;
-
-      const keepsSelection = event.target.closest(
-        '.map-grid, .palette-row, .landmark-picker'
-      );
-
-      if (keepsSelection) return;
-
-      mapRotationSessionRef.current = null;
-      setSelectedCells([]);
-    };
-
-    document.addEventListener('click', handleOutsideMapClick);
-
-    return () => document.removeEventListener('click', handleOutsideMapClick);
-  }, []);
 
   const [checkMessage, setCheckMessage] = useState(
     initialSession?.checkMessage || ''
@@ -410,6 +459,47 @@ function Play() {
 
   const isLocked = isSolved || isSubmitted;
 
+  useEffect(() => {
+    if (isLocked) setActiveFragmentId(null);
+  }, [isLocked]);
+
+  useEffect(() => {
+    if (!isPlacementDragging) return undefined;
+
+    const handleMove = (event) => {
+      const drag = placementDragRef.current;
+      const metrics = getGridMetrics(mapGridRef.current);
+
+      if (!drag || drag.pointerId !== event.pointerId || !metrics) return;
+
+      setPlacement({
+        row: Math.round(
+          (event.clientY - metrics.top) / metrics.stepY - drag.grabRow
+        ),
+        col: Math.round(
+          (event.clientX - metrics.left) / metrics.stepX - drag.grabCol
+        ),
+      });
+    };
+
+    const handleEnd = (event) => {
+      if (placementDragRef.current?.pointerId !== event.pointerId) return;
+
+      placementDragRef.current = null;
+      setIsPlacementDragging(false);
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
+
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
+    };
+  }, [isPlacementDragging]);
+
   const orderedFragmentItems = useMemo(() => {
     const fragmentMap = new Map(fragmentItems.map((item) => [item.id, item]));
 
@@ -426,6 +516,114 @@ function Play() {
     return fragmentItems.find((item) => item.id === fragmentDrag.id) || null;
   }, [fragmentDrag, fragmentItems]);
 
+  const activeFragment = useMemo(
+    () => fragmentItems.find((item) => item.id === activeFragmentId) || null,
+    [activeFragmentId, fragmentItems]
+  );
+  const activeRotation = activeFragment
+    ? fragmentRotations[activeFragment.id] || 0
+    : 0;
+  const activeMatrix = useMemo(
+    () =>
+      activeFragment
+        ? buildFragmentCellMatrix(
+            activeFragment,
+            answer,
+            visibleTestLandmarks,
+            activeRotation
+          )
+        : null,
+    [activeFragment, answer, visibleTestLandmarks, activeRotation]
+  );
+  const activePlacedEntry =
+    placements.find((entry) => entry.id === activeFragmentId) || null;
+  const displayCells = useMemo(
+    () =>
+      activePlacedEntry
+        ? paintPlacements(
+            placements.filter((entry) => entry.id !== activeFragmentId),
+            fragmentItems,
+            answer
+          )
+        : mapCells,
+    [
+      activePlacedEntry,
+      activeFragmentId,
+      placements,
+      fragmentItems,
+      answer,
+      mapCells,
+    ]
+  );
+  const activePlacement = useMemo(
+    () =>
+      activeMatrix
+    ? {
+        row: Math.max(
+          0,
+          Math.min(placement.row, GRID_SIZE - activeMatrix.length)
+        ),
+        col: Math.max(
+          0,
+          Math.min(placement.col, GRID_SIZE - activeMatrix[0].length)
+        ),
+      }
+    : null,
+    [activeMatrix, placement]
+  );
+
+  const conflictCells = useMemo(() => {
+    const colorsByCell = Array.from({ length: TOTAL_CELLS }, () => new Set());
+
+    placements
+      .filter((entry) => entry.id !== activeFragmentId)
+      .forEach((entry) => {
+        const item = fragmentItems.find((fragment) => fragment.id === entry.id);
+
+        if (!item) return;
+
+        buildFragmentCellMatrix(item, answer, [], entry.rotation).forEach(
+          (row, rowIndex) => {
+            row.forEach((cell, colIndex) => {
+              if (!cell.color) return;
+
+              colorsByCell[
+                (entry.row + rowIndex) * GRID_SIZE + entry.col + colIndex
+              ].add(cell.color);
+            });
+          }
+        );
+      });
+
+    return new Set(
+      colorsByCell.flatMap((colors, index) => (colors.size > 1 ? [index] : []))
+    );
+  }, [placements, activeFragmentId, fragmentItems, answer]);
+
+  // Squares of the active fragment that sit on a different colour.
+  const overlayConflicts = useMemo(() => {
+    const conflicts = new Set();
+
+    if (!activeMatrix || !activePlacement) return conflicts;
+
+    activeMatrix.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (!cell.color) return;
+
+        const index =
+          (activePlacement.row + rowIndex) * GRID_SIZE +
+          activePlacement.col +
+          colIndex;
+
+        if (displayCells[index] && displayCells[index] !== cell.color) {
+          conflicts.add(index);
+        }
+      });
+    });
+
+    return conflicts;
+  }, [activeMatrix, activePlacement, displayCells]);
+
   useEffect(() => {
     mapCellsRef.current = mapCells;
   }, [mapCells]);
@@ -433,6 +631,10 @@ function Play() {
   useEffect(() => {
     mapLandmarksRef.current = mapLandmarks;
   }, [mapLandmarks]);
+
+  useEffect(() => {
+    placementsRef.current = placements;
+  }, [placements]);
 
   useEffect(() => {
     if (!isTimerRunning || !startedAt) {
@@ -488,6 +690,7 @@ function Play() {
       fragmentRotations,
       usedFragments,
       mapCells,
+      placements,
       mapLandmarks,
       history,
       isSolved,
@@ -516,6 +719,7 @@ function Play() {
     fragmentRotations,
     usedFragments,
     mapCells,
+    placements,
     mapLandmarks,
     history,
     isSolved,
@@ -592,33 +796,11 @@ function Play() {
     setCheckMessage('');
   };
 
-  const getCellFromPointer = (clientX, clientY) => {
-    if (!mapGridRef.current) {
-      return null;
-    }
-
-    const rect = mapGridRef.current.getBoundingClientRect();
-    const cellSize = rect.width / GRID_SIZE;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-
-    if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
-      return null;
-    }
-
-    return {
-      row,
-      col,
-      index: rowColToIndex(row, col),
-    };
-  };
-
   const pushHistory = () => {
     const snapshot = {
       mapCells: [...mapCellsRef.current],
       mapLandmarks: [...mapLandmarksRef.current],
+      placements: placementsRef.current.map((entry) => ({ ...entry })),
     };
 
     setHistory((prev) => {
@@ -646,7 +828,6 @@ function Play() {
       return;
     }
 
-    mapRotationSessionRef.current = null;
     const previous = history[history.length - 1];
     const previousMap = Array.isArray(previous)
       ? previous
@@ -656,10 +837,10 @@ function Play() {
       : previous.mapLandmarks;
 
     setMapCells(previousMap);
+    setPlacements(Array.isArray(previous) ? [] : previous.placements || []);
+    setActiveFragmentId(null);
     setMapLandmarks(previousLandmarks || Array(TOTAL_CELLS).fill(null));
     setHistory((prev) => prev.slice(0, -1));
-    setSelectedCells([]);
-    setDragState(null);
     setCheckMessage('');
     setSubmittedMap(null);
     setSubmittedLandmarks(null);
@@ -677,6 +858,8 @@ function Play() {
     setFragmentDrag({
       id: item.id,
       pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
       x: event.clientX,
       y: event.clientY,
       width: rect.width,
@@ -707,6 +890,19 @@ function Play() {
       return;
     }
 
+    const isClick =
+      Math.hypot(
+        event.clientX - fragmentDrag.startX,
+        event.clientY - fragmentDrag.startY
+      ) < 8;
+
+    if (isClick) {
+      handleActivateFragment(fragmentDrag.id);
+      setFragmentDrag(null);
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      return;
+    }
+
     const target = document
       .elementFromPoint(event.clientX, event.clientY)
       ?.closest('[data-fragment-id]');
@@ -733,218 +929,228 @@ function Play() {
   };
 
   const handleCellClick = (index) => {
-    if (dragState || isLocked) {
-      return;
-    }
-
-    mapRotationSessionRef.current = null;
-
-    const clickedColor = mapCells[index];
-    const isSelected = selectedCells.includes(index);
-
-    setSelectedCells((current) => {
-      if (clickedColor === null) return [index];
-      if (current.length === 0) return [index];
-
-      if (current.length === 1) {
-        const currentIndex = current[0];
-        const currentColor = mapCells[currentIndex];
-
-        if (currentIndex === index) return [index];
-        if (currentColor === null) return [index];
-
-        return [...current, index];
-      }
-
-      if (isSelected) return [index];
-
-      return [...current, index];
-    });
-  };
-
-  const applyColorToSelectedCells = (color) => {
-    if (!selectedCells.length || isLocked) {
-      return;
-    }
-
-    mapRotationSessionRef.current = null;
-    pushHistory();
-
-    setMapCells((current) =>
-      current.map((cell, index) =>
-        selectedCells.includes(index) ? color : cell
-      )
-    );
-    setSelectedCells([]);
-    setCheckMessage('');
-  };
-
-  const applyLandmarkToSelectedCell = (landmark) => {
     if (isLocked) return;
 
-    if (selectedCells.length !== 1) {
-      setCheckMessage('Select one map square before choosing a symbol.');
+    if (activeFragmentId) {
+      const owner = findPlacementAt(placements, index, fragmentItems, answer);
+
+      if (owner && owner.id !== activeFragmentId) {
+        handleActivateFragment(owner.id);
+      } else {
+        handlePlaceActiveFragment();
+      }
+
       return;
     }
 
-    const targetIndex = selectedCells[0];
+    if (armedLandmarkId) {
+      pushHistory();
+      setMapLandmarks((current) =>
+        current.map((value, cellIndex) => {
+          if (cellIndex === index) return armedLandmarkId;
+          return value === armedLandmarkId ? null : value;
+        })
+      );
+      setArmedLandmarkId(null);
+      setCheckMessage('');
+      return;
+    }
 
-    mapRotationSessionRef.current = null;
+    const owner = findPlacementAt(placements, index, fragmentItems, answer);
+
+    if (owner) handleActivateFragment(owner.id);
+  };
+
+  const handleActivateFragment = (fragmentId) => {
+    if (isLocked) return;
+
+    if (activeFragmentId === fragmentId) {
+      handlePlaceActiveFragment();
+      return;
+    }
+
+    const item = fragmentItems.find((entry) => entry.id === fragmentId);
+
+    if (!item) return;
+
+    if (activeFragmentId) handlePlaceActiveFragment();
+    setArmedLandmarkId(null);
+
+    const existing = placements.find((entry) => entry.id === fragmentId);
+
+    if (existing) {
+      setFragmentRotations((current) => ({
+        ...current,
+        [fragmentId]: existing.rotation,
+      }));
+      setPlacement({ row: existing.row, col: existing.col });
+    } else {
+      const matrix = buildFragmentCellMatrix(
+        item,
+        answer,
+        [],
+        fragmentRotations[fragmentId] || 0
+      );
+
+      setPlacement({
+        row: Math.floor((GRID_SIZE - matrix.length) / 2),
+        col: Math.floor((GRID_SIZE - matrix[0].length) / 2),
+      });
+    }
+
+    setActiveFragmentId(fragmentId);
+  };
+
+  const rotateActiveFragment = (steps = 1) => {
+    if (!activeFragmentId || isLocked) return;
+
+    setFragmentRotations((current) => ({
+      ...current,
+      [activeFragmentId]: ((current[activeFragmentId] || 0) + steps) % 4,
+    }));
+  };
+
+  const rotateActiveRef = useRef(rotateActiveFragment);
+
+  useEffect(() => {
+    rotateActiveRef.current = rotateActiveFragment;
+  });
+
+  // Two-finger twist on the map rotates the active fragment in 90° steps.
+  useEffect(() => {
+    if (!activeFragmentId) return undefined;
+
+    const touches = new Map();
+    let lastAngle = null;
+
+    const currentAngle = () => {
+      const [first, second] = [...touches.values()];
+
+      return (
+        (Math.atan2(second.y - first.y, second.x - first.x) * 180) / Math.PI
+      );
+    };
+
+    const handleDown = (event) => {
+      if (
+        event.pointerType !== 'touch' ||
+        !(event.target instanceof Element) ||
+        !event.target.closest('.map-board')
+      ) {
+        return;
+      }
+
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (touches.size === 2) {
+        lastAngle = currentAngle();
+        placementDragRef.current = null;
+        setIsPlacementDragging(false);
+      }
+    };
+
+    const handleMove = (event) => {
+      if (!touches.has(event.pointerId)) return;
+
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (touches.size !== 2 || lastAngle === null) return;
+
+      const angle = currentAngle();
+      const delta = ((angle - lastAngle + 540) % 360) - 180;
+
+      if (Math.abs(delta) >= 45) {
+        rotateActiveRef.current(delta > 0 ? 1 : 3);
+        lastAngle = angle;
+      }
+    };
+
+    const handleUp = (event) => {
+      touches.delete(event.pointerId);
+      if (touches.size < 2) lastAngle = null;
+    };
+
+    window.addEventListener('pointerdown', handleDown);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+
+    return () => {
+      window.removeEventListener('pointerdown', handleDown);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [activeFragmentId]);
+
+  const handlePlacementPointerDown = (event) => {
+    const metrics = getGridMetrics(mapGridRef.current);
+
+    if (!activePlacement || !metrics || isLocked) return;
+
+    event.preventDefault();
+    placementDragRef.current = {
+      pointerId: event.pointerId,
+      grabRow:
+        (event.clientY - metrics.top) / metrics.stepY - activePlacement.row,
+      grabCol:
+        (event.clientX - metrics.left) / metrics.stepX - activePlacement.col,
+    };
+    setIsPlacementDragging(true);
+  };
+
+  const handlePlaceActiveFragment = () => {
+    if (!activeFragment || !activePlacement || isLocked) return;
+
+    if (
+      activePlacedEntry &&
+      activePlacedEntry.row === activePlacement.row &&
+      activePlacedEntry.col === activePlacement.col &&
+      activePlacedEntry.rotation === activeRotation
+    ) {
+      setActiveFragmentId(null);
+      return;
+    }
+
+    const next = [
+      ...placements.filter((entry) => entry.id !== activeFragment.id),
+      {
+        id: activeFragment.id,
+        row: activePlacement.row,
+        col: activePlacement.col,
+        rotation: activeRotation,
+      },
+    ];
+
     pushHistory();
-    setMapLandmarks((current) =>
-      current.map((value, index) => {
-        if (index === targetIndex) return landmark.id;
-        return value === landmark.id ? null : value;
-      })
+    setPlacements(next);
+    setMapCells(paintPlacements(next, fragmentItems, answer));
+    setUsedFragments((current) =>
+      current.includes(activeFragment.id)
+        ? current
+        : [...current, activeFragment.id]
     );
-    setSelectedCells([]);
+    setActiveFragmentId(null);
     setCheckMessage('');
   };
 
-  const rotateSelectedMapTilesClockwise = async () => {
-    if (
-      isLocked ||
-      selectedCells.length < 2 ||
-      mapRotationAnimatingRef.current
-    ) return;
+  const handleRemoveActive = () => {
+    if (!activeFragment || isLocked) return;
 
-    mapRotationAnimatingRef.current = true;
-
-    let session = mapRotationSessionRef.current;
-
-    if (!session) {
-      const selected = selectedCells.map((index) => ({
-        ...indexToRowCol(index),
-        color: mapCells[index],
-        landmarkId: mapLandmarks[index],
-      }));
-      const baseMap = [...mapCells];
-      const baseLandmarks = [...mapLandmarks];
-
-      selectedCells.forEach((index) => {
-        baseMap[index] = null;
-        baseLandmarks[index] = null;
-      });
-
-      session = {
-        selected,
-        originalSelected: selected.map((cell) => ({ ...cell })),
-        baseMap,
-        baseLandmarks,
-        quarterTurns: 0,
-      };
-      mapRotationSessionRef.current = session;
-      pushHistory();
-    }
-
-    const selected = session.selected;
-    const minRow = Math.min(...selected.map((cell) => cell.row));
-    const maxRow = Math.max(...selected.map((cell) => cell.row));
-    const minCol = Math.min(...selected.map((cell) => cell.col));
-    const maxCol = Math.max(...selected.map((cell) => cell.col));
-    const height = maxRow - minRow + 1;
-    const width = maxCol - minCol + 1;
-    const rotatedMinRow = Math.min(minRow, GRID_SIZE - width);
-    const rotatedMinCol = Math.min(minCol, GRID_SIZE - height);
-    const nextQuarterTurns = (session.quarterTurns + 1) % 4;
-    const rotated =
-      nextQuarterTurns === 0
-        ? session.originalSelected.map((cell) => ({
-            ...cell,
-            targetIndex: rowColToIndex(cell.row, cell.col),
-          }))
-        : selected.map((cell) => ({
-            ...cell,
-            targetIndex: rowColToIndex(
-              rotatedMinRow + (cell.col - minCol),
-              rotatedMinCol + (height - 1 - (cell.row - minRow))
-            ),
-          }));
-
-    session.selected = rotated.map((cell) => ({
-      row: indexToRowCol(cell.targetIndex).row,
-      col: indexToRowCol(cell.targetIndex).col,
-      color: cell.color,
-      landmarkId: cell.landmarkId,
-    }));
-    session.quarterTurns = nextQuarterTurns;
-
-    const selectedElements = selectedCells
-      .map((index) =>
-        mapGridRef.current?.querySelector(`[data-cell-index="${index}"]`)
-      )
-      .filter(Boolean);
-    const targetRects = rotated
-      .map((cell) =>
-        mapGridRef.current
-          ?.querySelector(`[data-cell-index="${cell.targetIndex}"]`)
-          ?.getBoundingClientRect()
-      )
-      .filter(Boolean);
-    const targetCenter = targetRects.length
-      ? {
-          x:
-            (Math.min(...targetRects.map((rect) => rect.left)) +
-              Math.max(...targetRects.map((rect) => rect.right))) /
-            2,
-          y:
-            (Math.min(...targetRects.map((rect) => rect.top)) +
-              Math.max(...targetRects.map((rect) => rect.bottom))) /
-            2,
-        }
-      : null;
-    const removeRotationOverlay = await animateRotationOverlay(
-      selectedElements,
-      targetCenter,
-      { showMapPlaceholders: true }
-    );
-
-    flushSync(() => {
-      setMapCells(() => {
-        const next = [...session.baseMap];
-
-        rotated.forEach((cell) => {
-          next[cell.targetIndex] = cell.color;
-        });
-
-        return next;
-      });
-      setMapLandmarks(() => {
-        const next = [...session.baseLandmarks];
-
-        rotated.forEach((cell) => {
-          next[cell.targetIndex] = cell.landmarkId;
-        });
-
-        return next;
-      });
-      setSelectedCells(rotated.map((cell) => cell.targetIndex));
-      setCheckMessage('');
-    });
-    removeRotationOverlay();
-    mapRotationAnimatingRef.current = false;
-  };
-
-  const eraseSelectedCells = () => {
-    if (!selectedCells.length || isLocked) {
+    if (!activePlacedEntry) {
+      setActiveFragmentId(null);
       return;
     }
 
-    mapRotationSessionRef.current = null;
+    const next = placements.filter((entry) => entry.id !== activeFragmentId);
+
     pushHistory();
-
-    setMapCells((current) =>
-      current.map((cell, index) =>
-        selectedCells.includes(index) ? null : cell
-      )
+    setPlacements(next);
+    setMapCells(paintPlacements(next, fragmentItems, answer));
+    setUsedFragments((current) =>
+      current.filter((id) => id !== activeFragmentId)
     );
-    setMapLandmarks((current) =>
-      current.map((landmark, index) =>
-        selectedCells.includes(index) ? null : landmark
-      )
-    );
-
-    setSelectedCells([]);
+    setActiveFragmentId(null);
     setCheckMessage('');
   };
 
@@ -953,14 +1159,13 @@ function Play() {
       return;
     }
 
-    mapRotationSessionRef.current = null;
     pushHistory();
 
     setMapCells(Array(TOTAL_CELLS).fill(null));
+    setPlacements([]);
+    setActiveFragmentId(null);
     setMapLandmarks(Array(TOTAL_CELLS).fill(null));
-    setSelectedCells([]);
     setUsedFragments([]);
-    setDragState(null);
     setCheckMessage('');
     setSubmittedMap(null);
     setSubmittedLandmarks(null);
@@ -1006,209 +1211,43 @@ function Play() {
     pushHistory();
 
     setMapCells(filledMap);
+    setPlacements([]);
+    setActiveFragmentId(null);
     setMapLandmarks(Array(TOTAL_CELLS).fill(null));
-    setSelectedCells([]);
     setUsedFragments([]);
-    setDragState(null);
     setCheckMessage(`Autofilled ${targetCorrect}/${TOTAL_CELLS} correct.`);
     setSubmittedMap(null);
     setShowResults(false);
     setHasClosedResults(false);
   };
 
-  const canDragSelection =
-    !isLocked &&
-    selectedCells.length >= 2 &&
-    selectedCells.every((index) => mapCells[index] !== null);
+  const commitActiveRef = useRef(handlePlaceActiveFragment);
 
-  const startGroupDrag = (event, anchorIndex) => {
-    if (!canDragSelection || !selectedCells.includes(anchorIndex)) {
-      return;
-    }
+  useEffect(() => {
+    commitActiveRef.current = handlePlaceActiveFragment;
+  });
 
-    mapRotationSessionRef.current = null;
-    const anchorCell = indexToRowCol(anchorIndex);
-    const mapRect = mapGridRef.current.getBoundingClientRect();
-    const cellSize = mapRect.width / GRID_SIZE;
+  useEffect(() => {
+    if (!activeFragmentId) return undefined;
 
-    const selectedCoords = selectedCells.map((index) => {
-      const cell = indexToRowCol(index);
+    const handleOutsideClick = (event) => {
+      if (!(event.target instanceof Element)) return;
 
-      return {
-        index,
-        row: cell.row,
-        col: cell.col,
-        color: mapCells[index],
-        landmarkId: mapLandmarks[index],
-      };
-    });
-
-    const minRow = Math.min(...selectedCoords.map((cell) => cell.row));
-    const minCol = Math.min(...selectedCoords.map((cell) => cell.col));
-    const maxRow = Math.max(...selectedCoords.map((cell) => cell.row));
-    const maxCol = Math.max(...selectedCoords.map((cell) => cell.col));
-
-    const offsets = selectedCells.map((index) => {
-      const cell = indexToRowCol(index);
-
-      return {
-        index,
-        rowOffset: cell.row - anchorCell.row,
-        colOffset: cell.col - anchorCell.col,
-        color: mapCells[index],
-        landmarkId: mapLandmarks[index],
-      };
-    });
-
-    const ghostCells = selectedCoords.map((cell) => ({
-      row: cell.row - minRow,
-      col: cell.col - minCol,
-      color: cell.color,
-      landmarkId: cell.landmarkId,
-    }));
-
-    const anchorGhostRow = anchorCell.row - minRow;
-    const anchorGhostCol = anchorCell.col - minCol;
-
-    const ghostOffsetX =
-      anchorGhostCol * cellSize + ((event.clientX - mapRect.left) % cellSize);
-
-    const ghostOffsetY =
-      anchorGhostRow * cellSize + ((event.clientY - mapRect.top) % cellSize);
-
-    setDragState({
-      anchorIndex,
-      pointerId: event.pointerId,
-      originSelected: [...selectedCells],
-      offsets,
-      previewTargetIndices: selectedCells,
-      isValidDrop: true,
-      x: event.clientX,
-      y: event.clientY,
-      cellSize,
-      ghostCells,
-      ghostRows: maxRow - minRow + 1,
-      ghostCols: maxCol - minCol + 1,
-      ghostOffsetX,
-      ghostOffsetY,
-    });
-
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const updateGroupDrag = (event) => {
-    setDragState((current) => {
-      if (!current || current.pointerId !== event.pointerId || isLocked) {
-        return current;
+      if (
+        event.target.closest(
+          '.map-placement, .map-grid, .fragment-card, .landmark-picker__rotate, .landmark-picker__remove'
+        )
+      ) {
+        return;
       }
 
-      const pointerCell = getCellFromPointer(event.clientX, event.clientY);
+      commitActiveRef.current();
+    };
 
-      if (!pointerCell) {
-        return {
-          ...current,
-          x: event.clientX,
-          y: event.clientY,
-          previewTargetIndices: current.originSelected,
-          isValidDrop: false,
-        };
-      }
+    document.addEventListener('click', handleOutsideClick);
 
-      const targetIndices = [];
-      let isValid = true;
-
-      for (const offset of current.offsets) {
-        const row = pointerCell.row + offset.rowOffset;
-        const col = pointerCell.col + offset.colOffset;
-
-        if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
-          isValid = false;
-          break;
-        }
-
-        targetIndices.push(rowColToIndex(row, col));
-      }
-
-      return {
-        ...current,
-        x: event.clientX,
-        y: event.clientY,
-        previewTargetIndices: isValid ? targetIndices : current.originSelected,
-        isValidDrop: isValid,
-      };
-    });
-  };
-
-  const endGroupDrag = (event) => {
-    setDragState((current) => {
-      if (!current || current.pointerId !== event.pointerId) {
-        return current;
-      }
-
-      if (!current.isValidDrop || isLocked) {
-        return null;
-      }
-
-      const snapshot = {
-        mapCells: [...mapCellsRef.current],
-        mapLandmarks: [...mapLandmarksRef.current],
-      };
-
-      setHistory((prev) => {
-        const last = prev[prev.length - 1];
-        const lastMap = Array.isArray(last) ? last : last?.mapCells;
-        const lastLandmarks = Array.isArray(last)
-          ? Array(TOTAL_CELLS).fill(null)
-          : last?.mapLandmarks;
-
-        if (
-          last &&
-          boardsMatch(lastMap, snapshot.mapCells) &&
-          boardsMatch(lastLandmarks, snapshot.mapLandmarks)
-        ) {
-          return prev;
-        }
-
-        return [...prev.slice(-19), snapshot];
-      });
-
-      setMapCells((existing) => {
-        const next = [...existing];
-
-        current.originSelected.forEach((index) => {
-          next[index] = null;
-        });
-
-        current.offsets.forEach((offset, offsetIndex) => {
-          const targetIndex = current.previewTargetIndices[offsetIndex];
-          next[targetIndex] = offset.color;
-        });
-
-        return next;
-      });
-      setMapLandmarks((existing) => {
-        const next = [...existing];
-
-        current.originSelected.forEach((index) => {
-          next[index] = null;
-        });
-
-        current.offsets.forEach((offset, offsetIndex) => {
-          const targetIndex = current.previewTargetIndices[offsetIndex];
-          next[targetIndex] = offset.landmarkId || null;
-        });
-
-        return next;
-      });
-
-      setSelectedCells(current.previewTargetIndices);
-      setCheckMessage('');
-
-      return null;
-    });
-
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  };
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [activeFragmentId]);
 
   const handleOpenSubmit = () => {
     if (isLocked) {
@@ -1312,8 +1351,6 @@ function Play() {
 
     setSubmittedMap(frozenSubmittedMap);
     setSubmittedLandmarks(frozenSubmittedLandmarks);
-    setSelectedCells([]);
-    setDragState(null);
     setShowResults(true);
     setHasClosedResults(false);
     setElapsedSeconds(finalTimeSeconds);
@@ -1346,10 +1383,6 @@ function Play() {
       setCheckMessage('');
     }
   };
-
-  const previewSelectedSet = dragState
-    ? new Set(dragState.previewTargetIndices)
-    : new Set(selectedCells);
 
   const resultMap = submittedMap || mapCells;
   const resultLandmarks = submittedLandmarks || mapLandmarks;
@@ -1402,11 +1435,6 @@ function Play() {
       : '--:--',
 };
 
-  const paletteItems = Array.from({ length: 4 }, (_, index) => [
-    palette[index * 2],
-    palette[index * 2 + 1],
-  ]).flat();
-
   const currentStreak =
   overviewStats.currentStreak ?? overviewStats.streak ?? 0;
 
@@ -1442,7 +1470,11 @@ const streakAverageTime =
             </h1>
           </header>
 
-          <div className="play-surface play-surface--game">
+          <div
+            className={`play-surface play-surface--game ${
+              activeFragment ? 'play-surface--placing' : ''
+            }`}
+          >
             {isDailyExpired && (
               <div className="confirm-overlay">
                 <div className="confirm-modal">
@@ -1519,13 +1551,6 @@ const streakAverageTime =
                   </strong>
                 </div>
 
-                {canDragSelection && (
-                  <div className="game-status-pill game-status-pill--active">
-                    <span className="game-status-pill__label">Mode</span>
-
-                    <strong className="game-status-pill__value">Drag</strong>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1544,10 +1569,10 @@ const streakAverageTime =
               <button
                 type="button"
                 className={`button button--secondary button--small ${
-                  !selectedCells.length || isLocked ? 'is-disabled' : ''
+                  !activeFragment || isLocked ? 'is-disabled' : ''
                 }`}
-                disabled={!selectedCells.length || isLocked}
-                onClick={eraseSelectedCells}
+                disabled={!activeFragment || isLocked}
+                onClick={handleRemoveActive}
               >
                 Erase
               </button>
@@ -1611,12 +1636,16 @@ const streakAverageTime =
                           type="button"
                           className={`landmark-palette__item ${
                             isPlaced ? 'is-placed' : ''
-                          }`}
-                          disabled={isLocked}
+                          } ${armedLandmarkId === landmark.id ? 'is-armed' : ''}`}
+                          disabled={isLocked || Boolean(activeFragment)}
                           aria-label={`${landmark.label}${
                             isPlaced ? ', placed' : ''
                           }`}
-                          onClick={() => applyLandmarkToSelectedCell(landmark)}
+                          onClick={() =>
+                            setArmedLandmarkId((current) =>
+                              current === landmark.id ? null : landmark.id
+                            )
+                          }
                         >
                           <span
                             className="material-symbols-outlined topo-landmark-icon"
@@ -1634,15 +1663,31 @@ const streakAverageTime =
                   <button
                     type="button"
                     className="landmark-palette__item landmark-picker__rotate"
-                    disabled={isLocked || selectedCells.length < 2}
-                    onClick={rotateSelectedMapTilesClockwise}
-                    aria-label="Rotate selected map tiles 90 degrees clockwise"
+                    disabled={isLocked || !activeFragment}
+                    onClick={() => rotateActiveFragment(1)}
+                    aria-label="Rotate active fragment 90 degrees clockwise"
                   >
                     <span
                       className="material-symbols-outlined"
                       aria-hidden="true"
                     >
                       rotate_right
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="landmark-palette__item landmark-picker__remove"
+                    disabled={isLocked || !activeFragment}
+                    onClick={handleRemoveActive}
+                    aria-label="Remove active fragment from grid"
+                    title="Remove from grid"
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      aria-hidden="true"
+                    >
+                      delete
                     </span>
                   </button>
                 </div>
@@ -1652,127 +1697,82 @@ const streakAverageTime =
             <div className={`board-layout ${
               usesMapFeatures ? 'board-layout--test' : ''
             }`}>
+            <div className="map-board">
             <div ref={mapGridRef} className="map-grid">
-              {mapCells.map((cellColor, index) => {
-                const isSelected = !isLocked && previewSelectedSet.has(index);
+              {displayCells.map((cellColor, index) => (
+                <button
+                  key={index}
+                  data-cell-index={index}
+                  type="button"
+                  className={`map-grid__cell ${isLocked ? 'is-solved' : ''} ${
+                    conflictCells.has(index) ? 'is-conflict' : ''
+                  }`}
+                  style={{
+                    backgroundColor: cellColor || 'rgb(142, 142, 128)',
+                  }}
+                  onClick={() => handleCellClick(index)}
+                  aria-label={`Map cell ${index + 1}`}
+                >
+                  {usesMapFeatures && mapLandmarks[index] && (() => {
+                    const landmark = testLandmarks.find(
+                      (item) => item.id === mapLandmarks[index]
+                    );
 
-                const isDragOrigin =
-                  dragState?.originSelected?.includes(index) || false;
-
-                return (
-                  <button
-                    key={index}
-                    data-cell-index={index}
-                    type="button"
-                    className={`map-grid__cell ${
-                      isSelected ? 'is-selected' : ''
-                    } ${isDragOrigin ? 'is-drag-origin' : ''} ${
-                      isLocked ? 'is-solved' : ''
-                    }`}
-                    style={{
-                      backgroundColor: cellColor || 'rgb(142, 142, 128)',
-                    }}
-                    onClick={() => handleCellClick(index)}
-                    onPointerDown={(event) => startGroupDrag(event, index)}
-                    onPointerMove={updateGroupDrag}
-                    onPointerUp={endGroupDrag}
-                    onPointerCancel={endGroupDrag}
-                    aria-pressed={isSelected}
-                    aria-label={`Map cell ${index + 1}`}
-                  >
-                    {usesMapFeatures && mapLandmarks[index] && (() => {
-                      const landmark = testLandmarks.find(
-                        (item) => item.id === mapLandmarks[index]
-                      );
-
-                      return landmark ? (
-                        <span
-                          className="material-symbols-outlined topo-landmark-icon topo-landmark-icon--map"
-                          style={{
-                            color: getContrastingIconColor(cellColor),
-                          }}
-                          aria-hidden="true"
-                        >
-                          {landmark.icon}
-                        </span>
-                      ) : null;
-                    })()}
-                  </button>
-                );
-              })}
+                    return landmark ? (
+                      <span
+                        className="material-symbols-outlined topo-landmark-icon topo-landmark-icon--map"
+                        style={{
+                          color: getContrastingIconColor(cellColor),
+                        }}
+                        aria-hidden="true"
+                      >
+                        {landmark.icon}
+                      </span>
+                    ) : null;
+                  })()}
+                </button>
+              ))}
             </div>
 
-            {dragState?.ghostCells && (
-              <div
-                className={`map-drag-ghost ${
-                  dragState.isValidDrop ? 'is-valid' : 'is-invalid'
-                }`}
-                style={{
-                  width: dragState.ghostCols * dragState.cellSize,
-                  height: dragState.ghostRows * dragState.cellSize,
-                  gridTemplateColumns: `repeat(${dragState.ghostCols}, 1fr)`,
-                  transform: `translate3d(${
-                    dragState.x - dragState.ghostOffsetX
-                  }px, ${dragState.y - dragState.ghostOffsetY}px, 0)`,
-                }}
-              >
-                {Array.from({
-                  length: dragState.ghostRows * dragState.ghostCols,
-                }).map((_, index) => {
-                  const row = Math.floor(index / dragState.ghostCols);
-                  const col = index % dragState.ghostCols;
-
-                  const ghostCell = dragState.ghostCells.find(
-                    (cell) => cell.row === row && cell.col === col
-                  );
+            {activeMatrix && activePlacement && (
+              <div className="map-placement" aria-label="Active fragment">
+                {Array.from({ length: TOTAL_CELLS }).map((_, index) => {
+                  const cell =
+                    activeMatrix[
+                      Math.floor(index / GRID_SIZE) - activePlacement.row
+                    ]?.[(index % GRID_SIZE) - activePlacement.col];
+                  const isFilled = Boolean(cell?.color);
 
                   return (
                     <span
                       key={index}
-                      className={`map-drag-ghost__cell ${
-                        ghostCell ? 'is-filled' : 'is-empty'
-                      }`}
-                      style={{
-                        backgroundColor: ghostCell?.color || 'transparent',
-                      }}
+                      className={`map-placement__cell ${
+                        isFilled ? 'is-filled' : ''
+                      } ${overlayConflicts.has(index) ? 'is-conflict' : ''}`}
+                      style={
+                        isFilled ? { backgroundColor: cell.color } : undefined
+                      }
+                      onPointerDown={
+                        isFilled ? handlePlacementPointerDown : undefined
+                      }
                     >
-                      {ghostCell?.landmarkId && (() => {
-                        const landmark = testLandmarks.find(
-                          (item) => item.id === ghostCell.landmarkId
-                        );
-
-                        return landmark ? (
-                          <span
-                            className="material-symbols-outlined topo-landmark-icon topo-landmark-icon--map"
-                            style={{
-                              color: getContrastingIconColor(ghostCell.color),
-                            }}
-                            aria-hidden="true"
-                          >
-                            {landmark.icon}
-                          </span>
-                        ) : null;
-                      })()}
                     </span>
                   );
                 })}
               </div>
             )}
+            </div>
 
-            <div className="palette-row">
-              {paletteItems.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={`palette__swatch ${isLocked ? 'is-disabled' : ''}`}
-                  style={{ backgroundColor: color }}
-                  onClick={() => applyColorToSelectedCells(color)}
-                  disabled={isLocked}
-                  aria-label={`Fill selected cells with ${color}`}
-                />
-              ))}
             </div>
-            </div>
+
+            {activeFragment && (
+              <div className="placement-bar">
+                <span className="placement-bar__hint">
+                  Drag to move. Click elsewhere to deselect.
+                </span>
+
+              </div>
+            )}
 
             <div className="game-fragments">
               <div className="fragment-panel">
@@ -1786,7 +1786,9 @@ const streakAverageTime =
                         key={item.id}
                         className={`fragment-card ${
                           isDragging ? 'is-dragging' : ''
-                        } ${isUsed ? 'is-used' : ''}`}
+                        } ${isUsed ? 'is-used' : ''} ${
+                          activeFragmentId === item.id ? 'is-active' : ''
+                        }`}
                         data-fragment-id={item.id}
                         onPointerDown={(event) =>
                           handleFragmentDragStart(event, item)

@@ -1,12 +1,5 @@
-import { buildFragmentMatrix } from '../../utils/fragments';
-import { rowColToIndex } from '../../utils/grid';
+import { buildFragmentCellMatrix } from '../../utils/fragments';
 import { getContrastingIconColor } from '../../utils/testLandmarks';
-
-function rotateMatrixClockwise(matrix) {
-  return matrix[0].map((_, columnIndex) =>
-    matrix.map((row) => row[columnIndex]).reverse()
-  );
-}
 
 function FragmentShape({
   fragment,
@@ -15,30 +8,12 @@ function FragmentShape({
   landmarks = [],
   rotation = 0,
 }) {
-  const colorMatrix = buildFragmentMatrix(fragment.cells, answer);
-  const minRow = Math.min(...fragment.cells.map((entry) => entry.row));
-  const minCol = Math.min(...fragment.cells.map((entry) => entry.col));
-  let matrix = colorMatrix.map((row, rowIndex) =>
-    row.map((color, colIndex) => {
-      const fragmentCell = fragment.cells.find(
-        (item) =>
-          item.row === rowIndex + minRow && item.col === colIndex + minCol
-      );
-      const answerIndex = fragmentCell
-        ? rowColToIndex(fragmentCell.row, fragmentCell.col)
-        : null;
-      const landmark = landmarks.find(
-        (item) =>
-          item.fragmentId === fragment.id && item.answerIndex === answerIndex
-      );
-
-      return { color, landmark };
-    })
+  const matrix = buildFragmentCellMatrix(
+    fragment,
+    answer,
+    landmarks,
+    rotation
   );
-
-  for (let turn = 0; turn < rotation % 4; turn += 1) {
-    matrix = rotateMatrixClockwise(matrix);
-  }
 
   const rowCount = matrix.length;
   const columnCount = matrix[0]?.length || 1;
