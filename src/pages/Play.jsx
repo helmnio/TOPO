@@ -295,6 +295,7 @@ function Play() {
   const [placement, setPlacement] = useState({ row: 0, col: 0 });
   const [isPlacementDragging, setIsPlacementDragging] = useState(false);
   const placementDragRef = useRef(null);
+  const lastSelectAtRef = useRef(0);
   const fragmentTapRef = useRef(null);
   const lastTapRef = useRef(null);
   const removeZoneRef = useRef(false);
@@ -470,6 +471,7 @@ function Play() {
 
       placementDragRef.current = null;
       setIsPlacementDragging(false);
+      lastSelectAtRef.current = Date.now();
 
       if (removeZoneRef.current) removeActiveRef.current();
       else setCommitTick((tick) => tick + 1);
@@ -1055,6 +1057,8 @@ function Play() {
   const handleActivateFragment = (fragmentId, at = null) => {
     if (isLocked) return;
 
+    lastSelectAtRef.current = Date.now();
+
     if (activeFragmentId === fragmentId && !at) {
       handlePlaceActiveFragment();
       return;
@@ -1104,6 +1108,8 @@ function Play() {
   // picked up first, so the map and the tray card always agree.
   const rotateFragmentBy = (fragmentId, steps, fromDeg = null) => {
     if (!gameplayRules.fragmentRotation || isLocked) return;
+
+    lastSelectAtRef.current = Date.now();
 
     const item = fragmentItems.find((entry) => entry.id === fragmentId);
 
@@ -1467,6 +1473,10 @@ function Play() {
 
     const handleOutsideClick = (event) => {
       if (!(event.target instanceof Element)) return;
+
+      // The click that follows the tap which selected a fragment can land
+      // somewhere else if the page shifted, so it must not deselect.
+      if (Date.now() - lastSelectAtRef.current < 700) return;
 
       if (
         event.target.closest(
@@ -2028,12 +2038,11 @@ const streakAverageTime =
 
             </div>
 
-            {activeFragment && (
+            {!isLocked && activeFragment && (
               <div className="placement-bar">
                 <span className="placement-bar__hint">
                   Drag to move, drag off the map to remove. Tap anywhere else to put it down.
                 </span>
-
               </div>
             )}
 

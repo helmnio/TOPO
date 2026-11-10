@@ -1,7 +1,7 @@
 /*
  * TOPO "adventure map" theme.
  *
- * A tea-stained, folded working map sheet: burnt edges, coffee rings, ruler-tick
+ * A tea-stained, folded working map sheet: burnt edges, coffee rings, ruler
  * section rules, a a numbered map grid in the hero, typewriter figures,
  * handwritten notes, map pieces taped down and a dark leather tab bar. Built on the GTS theme.
  * Scoped to html[data-theme='adventure'].
@@ -404,7 +404,7 @@
   }
 
   .board-layout--test .map-board {
-    margin-bottom: 18px;
+    margin-bottom: 6px;
   }
 
   .map-grid {
@@ -1027,7 +1027,7 @@
 
   .map-board {
     padding: var(--board-pad);
-    margin: 8px 4px 20px;
+    margin: 8px 4px 6px;
     border: 1px solid var(--ink);
     outline: 1px solid var(--ink);
     outline-offset: 4px;
@@ -1242,23 +1242,17 @@
     }
   }
 
-  /* section rules are rulers: a hairline with graduation ticks */
+  /* no section rules */
   .panel,
   .compare-section,
   .learn-rules {
     border-top: 0;
-    background:
-      repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 8px) top / 100% 7px no-repeat,
-      linear-gradient(var(--ink), var(--ink)) top / 100% 1px no-repeat;
     padding-top: 18px;
   }
 
   .play-header {
     border-bottom: 0;
     padding-bottom: 20px;
-    background:
-      repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 8px) bottom / 100% 7px no-repeat,
-      linear-gradient(var(--ink), var(--ink)) bottom / 100% 1px no-repeat;
   }
 
   .stat-card,
@@ -1343,7 +1337,7 @@
 
   .placement-bar__hint {
     font-family: var(--font-hand);
-    font-size: 19px;
+    font-size: 18px;
     text-transform: none;
     letter-spacing: 0;
   }
