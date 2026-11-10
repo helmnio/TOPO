@@ -13,7 +13,13 @@ WHAT CHANGED
 - Symbols appear in fragments and must also be placed on the completed map.
 - Fragments begin at quarter-turn rotations and can be rotated clockwise.
 - One fragment carries a north/navigation marker and begins north-up.
-- Selected groups of map tiles can be rotated clockwise.
+- Fragments are placed on the map as whole pieces: tap one to load it, drag it,
+  rotate it, then tap elsewhere to drop it. Tap a placed piece to pick it up
+  again. Square-by-square colouring and group rotation were replaced by this.
+- Rotate with the button, a two-finger twist, a double-tap or the R key. Remove
+  with the button, by dragging off the map, or with Delete.
+- Squares where placed fragments disagree on a colour get a red outline.
+- Symbols stay on the fragments; tap a symbol, then a map square, to place one.
 - Each puzzle has three overlap hints.
 - Correct completion requires the original north-up map orientation, correct
   colours, and correct symbol positions.

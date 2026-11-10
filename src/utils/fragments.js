@@ -1,4 +1,4 @@
-import { getAnswerColor, rowColToIndex } from './grid';
+import { getAnswerColor, rowColToIndex } from './grid.js';
 
 export function buildFragmentMatrix(cells, answer) {
   const rows = cells.map((cell) => cell.row);

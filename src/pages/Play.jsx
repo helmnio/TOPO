@@ -7,6 +7,14 @@ import FragmentShape from '../components/play/FragmentShape';
 import SubmitConfirmModal from '../components/play/SubmitConfirmModal';
 import ResultsModal from '../components/play/ResultsModal';
 import { buildFragmentCellMatrix } from '../utils/fragments';
+import {
+  clampPlacement,
+  findPlacementAt,
+  getCentredPlacement,
+  getConflictCells,
+  getRotatedPlacement,
+  paintPlacements,
+} from '../utils/placements';
 
 import ShareButton from '../components/share/ShareButton';
 
@@ -86,47 +94,6 @@ function getGridMetrics(gridElement) {
     stepX: (last.left - first.left) / (GRID_SIZE - 1),
     stepY: (last.top - first.top) / (GRID_SIZE - 1),
   };
-}
-
-function paintPlacements(placements, fragmentItems, answer) {
-  const next = Array(TOTAL_CELLS).fill(null);
-
-  placements.forEach((entry) => {
-    const item = fragmentItems.find((fragment) => fragment.id === entry.id);
-
-    if (!item) return;
-
-    buildFragmentCellMatrix(item, answer, [], entry.rotation).forEach(
-      (row, rowIndex) => {
-        row.forEach((cell, colIndex) => {
-          if (!cell.color) return;
-
-          next[(entry.row + rowIndex) * GRID_SIZE + entry.col + colIndex] =
-            cell.color;
-        });
-      }
-    );
-  });
-
-  return next;
-}
-
-// Topmost (most recently placed) fragment covering a map square.
-function findPlacementAt(placements, index, fragmentItems, answer) {
-  for (let i = placements.length - 1; i >= 0; i -= 1) {
-    const entry = placements[i];
-    const item = fragmentItems.find((fragment) => fragment.id === entry.id);
-
-    if (!item) continue;
-
-    const matrix = buildFragmentCellMatrix(item, answer, [], entry.rotation);
-    const row = Math.floor(index / GRID_SIZE) - entry.row;
-    const col = (index % GRID_SIZE) - entry.col;
-
-    if (matrix[row]?.[col]?.color) return entry;
-  }
-
-  return null;
 }
 
 function swapItems(array, fromIndex, toIndex) {
@@ -271,6 +238,11 @@ function Play() {
       isDailyMode &&
       session.dailySessionVersion !== ACTIVE_DAILY_SESSION_VERSION
     ) return null;
+    if (
+      !Array.isArray(session.placements) &&
+      Array.isArray(session.mapCells) &&
+      session.mapCells.some(Boolean)
+    ) return null;
 
     return session;
   }, [gameMode, isDailyMode, todayDateKey]);
@@ -318,21 +290,18 @@ function Play() {
     );
   });
 
-  const [usedFragments, setUsedFragments] = useState(() => {
-    const savedUsedFragments = initialSession?.usedFragments;
-
-    if (!Array.isArray(savedUsedFragments)) {
-      return [];
-    }
-
-    return savedUsedFragments.filter((id) => defaultFragmentOrder.includes(id));
-  });
-
   const [fragmentDrag, setFragmentDrag] = useState(null);
   const [activeFragmentId, setActiveFragmentId] = useState(null);
   const [placement, setPlacement] = useState({ row: 0, col: 0 });
   const [isPlacementDragging, setIsPlacementDragging] = useState(false);
   const placementDragRef = useRef(null);
+  const fragmentTapRef = useRef(null);
+  const lastTapRef = useRef(null);
+  const removeZoneRef = useRef(false);
+  const [isRemoveZone, setIsRemoveZone] = useState(false);
+  // finger twist angle while two fingers are down; spin plays the turn animation
+  const [twistAngle, setTwistAngle] = useState(null);
+  const [spin, setSpin] = useState({ id: null, from: 0, n: 0 });
 
   const [mapCells, setMapCells] = useState(() => {
     const savedMap = initialSession?.mapCells;
@@ -472,6 +441,19 @@ function Play() {
 
       if (!drag || drag.pointerId !== event.pointerId || !metrics) return;
 
+      const grid = mapGridRef.current?.getBoundingClientRect();
+      const margin = 28;
+      const isOutside = Boolean(
+        grid &&
+          (event.clientX < grid.left - margin ||
+            event.clientX > grid.right + margin ||
+            event.clientY < grid.top - margin ||
+            event.clientY > grid.bottom + margin)
+      );
+
+      removeZoneRef.current = isOutside;
+      setIsRemoveZone(isOutside);
+
       setPlacement({
         row: Math.round(
           (event.clientY - metrics.top) / metrics.stepY - drag.grabRow
@@ -487,6 +469,11 @@ function Play() {
 
       placementDragRef.current = null;
       setIsPlacementDragging(false);
+
+      if (removeZoneRef.current) removeActiveRef.current();
+
+      removeZoneRef.current = false;
+      setIsRemoveZone(false);
     };
 
     window.addEventListener('pointermove', handleMove);
@@ -572,33 +559,15 @@ function Play() {
     [activeMatrix, placement]
   );
 
-  const conflictCells = useMemo(() => {
-    const colorsByCell = Array.from({ length: TOTAL_CELLS }, () => new Set());
-
-    placements
-      .filter((entry) => entry.id !== activeFragmentId)
-      .forEach((entry) => {
-        const item = fragmentItems.find((fragment) => fragment.id === entry.id);
-
-        if (!item) return;
-
-        buildFragmentCellMatrix(item, answer, [], entry.rotation).forEach(
-          (row, rowIndex) => {
-            row.forEach((cell, colIndex) => {
-              if (!cell.color) return;
-
-              colorsByCell[
-                (entry.row + rowIndex) * GRID_SIZE + entry.col + colIndex
-              ].add(cell.color);
-            });
-          }
-        );
-      });
-
-    return new Set(
-      colorsByCell.flatMap((colors, index) => (colors.size > 1 ? [index] : []))
-    );
-  }, [placements, activeFragmentId, fragmentItems, answer]);
+  const conflictCells = useMemo(
+    () =>
+      getConflictCells(
+        placements.filter((entry) => entry.id !== activeFragmentId),
+        fragmentItems,
+        answer
+      ),
+    [placements, activeFragmentId, fragmentItems, answer]
+  );
 
   // Squares of the active fragment that sit on a different colour.
   const overlayConflicts = useMemo(() => {
@@ -688,7 +657,6 @@ function Play() {
       puzzle,
       fragmentOrder,
       fragmentRotations,
-      usedFragments,
       mapCells,
       placements,
       mapLandmarks,
@@ -717,7 +685,6 @@ function Play() {
     puzzle,
     fragmentOrder,
     fragmentRotations,
-    usedFragments,
     mapCells,
     placements,
     mapLandmarks,
@@ -738,20 +705,6 @@ function Play() {
     elapsedSeconds,
     isTimerRunning,
   ]);
-
-  const toggleUsedFragment = (fragmentId) => {
-    if (isLocked) {
-      return;
-    }
-
-    setUsedFragments((current) => {
-      if (current.includes(fragmentId)) {
-        return current.filter((id) => id !== fragmentId);
-      }
-
-      return [...current, fragmentId];
-    });
-  };
 
   const rotateFragmentClockwise = async (fragmentId) => {
     if (
@@ -837,7 +790,17 @@ function Play() {
       : previous.mapLandmarks;
 
     setMapCells(previousMap);
-    setPlacements(Array.isArray(previous) ? [] : previous.placements || []);
+    const restoredPlacements = Array.isArray(previous)
+      ? []
+      : previous.placements || [];
+
+    setPlacements(restoredPlacements);
+    setFragmentRotations((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        restoredPlacements.map((entry) => [entry.id, entry.rotation])
+      ),
+    }));
     setActiveFragmentId(null);
     setMapLandmarks(previousLandmarks || Array(TOTAL_CELLS).fill(null));
     setHistory((prev) => prev.slice(0, -1));
@@ -850,6 +813,16 @@ function Play() {
 
   const handleFragmentDragStart = (event, item) => {
     if (isLocked) {
+      return;
+    }
+
+    if (event.pointerType === 'touch') {
+      fragmentTapRef.current = {
+        id: item.id,
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
       return;
     }
 
@@ -886,6 +859,21 @@ function Play() {
   };
 
   const handleFragmentDragEnd = (event) => {
+    const tap = fragmentTapRef.current;
+
+    if (tap && tap.pointerId === event.pointerId) {
+      fragmentTapRef.current = null;
+
+      if (
+        event.type === 'pointerup' &&
+        Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 10
+      ) {
+        handleActivateFragment(tap.id);
+      }
+
+      return;
+    }
+
     if (!fragmentDrag || fragmentDrag.pointerId !== event.pointerId) {
       return;
     }
@@ -898,6 +886,27 @@ function Play() {
 
     if (isClick) {
       handleActivateFragment(fragmentDrag.id);
+      setFragmentDrag(null);
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      return;
+    }
+
+    if (
+      document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest('.map-board')
+    ) {
+      const metrics = getGridMetrics(mapGridRef.current);
+
+      handleActivateFragment(
+        fragmentDrag.id,
+        metrics
+          ? {
+              row: (event.clientY - metrics.top) / metrics.stepY,
+              col: (event.clientX - metrics.left) / metrics.stepX,
+            }
+          : null
+      );
       setFragmentDrag(null);
       event.currentTarget.releasePointerCapture?.(event.pointerId);
       return;
@@ -961,10 +970,10 @@ function Play() {
     if (owner) handleActivateFragment(owner.id);
   };
 
-  const handleActivateFragment = (fragmentId) => {
+  const handleActivateFragment = (fragmentId, at = null) => {
     if (isLocked) return;
 
-    if (activeFragmentId === fragmentId) {
+    if (activeFragmentId === fragmentId && !at) {
       handlePlaceActiveFragment();
       return;
     }
@@ -973,42 +982,90 @@ function Play() {
 
     if (!item) return;
 
-    if (activeFragmentId) handlePlaceActiveFragment();
+    if (activeFragmentId && activeFragmentId !== fragmentId) {
+      handlePlaceActiveFragment();
+    }
+
     setArmedLandmarkId(null);
 
     const existing = placements.find((entry) => entry.id === fragmentId);
+    const rotation = existing ? existing.rotation : fragmentRotations[fragmentId] || 0;
+    const matrix = buildFragmentCellMatrix(item, answer, [], rotation);
 
     if (existing) {
       setFragmentRotations((current) => ({
         ...current,
         [fragmentId]: existing.rotation,
       }));
+    }
+
+    if (at) {
+      setPlacement(
+        clampPlacement(
+          {
+            row: Math.round(at.row - matrix.length / 2),
+            col: Math.round(at.col - matrix[0].length / 2),
+          },
+          matrix
+        )
+      );
+    } else if (existing) {
       setPlacement({ row: existing.row, col: existing.col });
     } else {
-      const matrix = buildFragmentCellMatrix(
-        item,
-        answer,
-        [],
-        fragmentRotations[fragmentId] || 0
-      );
-
-      setPlacement({
-        row: Math.floor((GRID_SIZE - matrix.length) / 2),
-        col: Math.floor((GRID_SIZE - matrix[0].length) / 2),
-      });
+      setPlacement(getCentredPlacement(matrix));
     }
 
     setActiveFragmentId(fragmentId);
   };
 
-  const rotateActiveFragment = (steps = 1) => {
-    if (!activeFragmentId || isLocked) return;
+  // Turns a fragment about its centre. A fragment that isn't active yet is
+  // picked up first, so the map and the tray card always agree.
+  const rotateFragmentBy = (fragmentId, steps, fromDeg = null) => {
+    if (!gameplayRules.fragmentRotation || isLocked) return;
 
-    setFragmentRotations((current) => ({
-      ...current,
-      [activeFragmentId]: ((current[activeFragmentId] || 0) + steps) % 4,
+    const item = fragmentItems.find((entry) => entry.id === fragmentId);
+
+    if (!item) return;
+
+    const turn = ((steps % 4) + 4) % 4;
+    const signed = turn === 3 ? -1 : turn;
+    const from = fragmentRotations[fragmentId] || 0;
+    const to = (from + turn) % 4;
+    const fromMatrix = buildFragmentCellMatrix(item, answer, [], from);
+    const toMatrix = buildFragmentCellMatrix(item, answer, [], to);
+    const existing = placements.find((entry) => entry.id === fragmentId);
+    const base =
+      fragmentId === activeFragmentId
+        ? activePlacement
+        : existing
+          ? { row: existing.row, col: existing.col }
+          : getCentredPlacement(fromMatrix);
+
+    if (fragmentId !== activeFragmentId) {
+      if (activeFragmentId) handlePlaceActiveFragment();
+      setArmedLandmarkId(null);
+      setActiveFragmentId(fragmentId);
+    }
+
+    setFragmentRotations((current) => ({ ...current, [fragmentId]: to }));
+    setPlacement(getRotatedPlacement(base, fromMatrix, toMatrix));
+    setSpin((current) => ({
+      id: fragmentId,
+      from: fromDeg ?? -90 * signed,
+      n: current.n + 1,
     }));
   };
+
+  const rotateActiveFragment = (steps = 1, fromDeg = null) => {
+    if (activeFragmentId) rotateFragmentBy(activeFragmentId, steps, fromDeg);
+  };
+
+  useEffect(() => {
+    if (!activeFragmentId) {
+      setSpin({ id: null, from: 0, n: 0 });
+      setTwistAngle(null);
+    }
+  }, [activeFragmentId]);
 
   const rotateActiveRef = useRef(rotateActiveFragment);
 
@@ -1016,12 +1073,14 @@ function Play() {
     rotateActiveRef.current = rotateActiveFragment;
   });
 
-  // Two-finger twist on the map rotates the active fragment in 90° steps.
+  // Two fingers twist the fragment smoothly; on release it locks to the
+  // nearest quarter turn and the last bit settles with an animation.
   useEffect(() => {
     if (!activeFragmentId) return undefined;
 
     const touches = new Map();
     let lastAngle = null;
+    let total = 0;
 
     const currentAngle = () => {
       const [first, second] = [...touches.values()];
@@ -1044,8 +1103,10 @@ function Play() {
 
       if (touches.size === 2) {
         lastAngle = currentAngle();
+        total = 0;
         placementDragRef.current = null;
         setIsPlacementDragging(false);
+        setTwistAngle(0);
       }
     };
 
@@ -1057,17 +1118,26 @@ function Play() {
       if (touches.size !== 2 || lastAngle === null) return;
 
       const angle = currentAngle();
-      const delta = ((angle - lastAngle + 540) % 360) - 180;
 
-      if (Math.abs(delta) >= 45) {
-        rotateActiveRef.current(delta > 0 ? 1 : 3);
-        lastAngle = angle;
-      }
+      total += ((angle - lastAngle + 540) % 360) - 180;
+      lastAngle = angle;
+      setTwistAngle(total);
     };
 
     const handleUp = (event) => {
+      if (!touches.has(event.pointerId)) return;
+
       touches.delete(event.pointerId);
-      if (touches.size < 2) lastAngle = null;
+
+      if (touches.size < 2 && lastAngle !== null) {
+        const steps = Math.round(total / 90);
+        const remaining = total - steps * 90;
+
+        lastAngle = null;
+        total = 0;
+        setTwistAngle(null);
+        rotateActiveRef.current(steps, remaining);
+      }
     };
 
     window.addEventListener('pointerdown', handleDown);
@@ -1089,6 +1159,21 @@ function Play() {
     if (!activePlacement || !metrics || isLocked) return;
 
     event.preventDefault();
+
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+
+    if (
+      lastTap &&
+      now - lastTap.time < 320 &&
+      Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 24
+    ) {
+      lastTapRef.current = null;
+      rotateActiveFragment(1);
+      return;
+    }
+
+    lastTapRef.current = { time: now, x: event.clientX, y: event.clientY };
     placementDragRef.current = {
       pointerId: event.pointerId,
       grabRow:
@@ -1125,11 +1210,6 @@ function Play() {
     pushHistory();
     setPlacements(next);
     setMapCells(paintPlacements(next, fragmentItems, answer));
-    setUsedFragments((current) =>
-      current.includes(activeFragment.id)
-        ? current
-        : [...current, activeFragment.id]
-    );
     setActiveFragmentId(null);
     setCheckMessage('');
   };
@@ -1147,9 +1227,6 @@ function Play() {
     pushHistory();
     setPlacements(next);
     setMapCells(paintPlacements(next, fragmentItems, answer));
-    setUsedFragments((current) =>
-      current.filter((id) => id !== activeFragmentId)
-    );
     setActiveFragmentId(null);
     setCheckMessage('');
   };
@@ -1165,7 +1242,6 @@ function Play() {
     setPlacements([]);
     setActiveFragmentId(null);
     setMapLandmarks(Array(TOTAL_CELLS).fill(null));
-    setUsedFragments([]);
     setCheckMessage('');
     setSubmittedMap(null);
     setSubmittedLandmarks(null);
@@ -1214,18 +1290,70 @@ function Play() {
     setPlacements([]);
     setActiveFragmentId(null);
     setMapLandmarks(Array(TOTAL_CELLS).fill(null));
-    setUsedFragments([]);
     setCheckMessage(`Autofilled ${targetCorrect}/${TOTAL_CELLS} correct.`);
     setSubmittedMap(null);
     setShowResults(false);
     setHasClosedResults(false);
   };
 
+  const removeActiveRef = useRef(handleRemoveActive);
+  const keyboardRef = useRef(null);
   const commitActiveRef = useRef(handlePlaceActiveFragment);
 
   useEffect(() => {
     commitActiveRef.current = handlePlaceActiveFragment;
+    removeActiveRef.current = handleRemoveActive;
+    keyboardRef.current = {
+      move: (rowStep, colStep) => {
+        if (!activePlacement) return;
+
+        setPlacement({
+          row: activePlacement.row + rowStep,
+          col: activePlacement.col + colStep,
+        });
+      },
+      rotate: rotateActiveFragment,
+      remove: handleRemoveActive,
+      commit: handlePlaceActiveFragment,
+    };
   });
+
+  useEffect(() => {
+    if (!activeFragmentId) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('input, textarea, select')
+      ) {
+        return;
+      }
+
+      const controls = keyboardRef.current;
+      const moves = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+      };
+
+      if (moves[event.key]) {
+        event.preventDefault();
+        controls.move(...moves[event.key]);
+      } else if (event.key === 'r' || event.key === 'R') {
+        controls.rotate(1);
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        controls.remove();
+      } else if (event.key === 'Escape' || event.key === 'Enter') {
+        controls.commit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeFragmentId]);
 
   useEffect(() => {
     if (!activeFragmentId) return undefined;
@@ -1235,7 +1363,7 @@ function Play() {
 
       if (
         event.target.closest(
-          '.map-placement, .map-grid, .fragment-card, .landmark-picker__rotate, .landmark-picker__remove'
+          '.map-placement, .map-grid, .fragment-card, .landmark-picker__tool'
         )
       ) {
         return;
@@ -1405,7 +1533,12 @@ function Play() {
   );
   const timerLabel = formatElapsedTime(elapsedSeconds);
   const filledTiles = mapCells.filter((cell) => cell !== null).length;
-  const storedStats = getComputedStats(loadStats());
+  const storedStats = useMemo(
+    () => getComputedStats(loadStats()),
+    // Re-read only when a result is saved or the results panel opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasSavedResult, showResults]
+  );
 
   const overviewStats = {
   played: storedStats.played,
@@ -1554,50 +1687,41 @@ const streakAverageTime =
               </div>
             )}
 
-            <div className="game-actions">
-              <button
-                type="button"
-                className={`button button--secondary button--small ${
-                  history.length === 0 || isLocked ? 'is-disabled' : ''
-                }`}
-                disabled={history.length === 0 || isLocked}
-                onClick={handleUndo}
-              >
-                Undo
-              </button>
-
-              <button
-                type="button"
-                className={`button button--secondary button--small ${
-                  !activeFragment || isLocked ? 'is-disabled' : ''
-                }`}
-                disabled={!activeFragment || isLocked}
-                onClick={handleRemoveActive}
-              >
-                Erase
-              </button>
-
-              <button
-                type="button"
-                className={`button button--secondary button--small ${
-                  isLocked ? 'is-disabled' : ''
-                }`}
-                disabled={isLocked}
-                onClick={handleClearRequest}
-              >
-                Clear
-              </button>
-
-              {!isLocked && (
+            {!isLocked && (
+              <div className="game-actions">
                 <button
                   type="button"
-                  className="button button--primary button--small"
-                  onClick={handleOpenSubmit}
+                  className={`button button--secondary button--small ${
+                    history.length === 0 || isLocked ? 'is-disabled' : ''
+                  }`}
+                  disabled={history.length === 0 || isLocked}
+                  onClick={handleUndo}
                 >
-                  Submit
+                  Undo
                 </button>
-              )}
-            </div>
+
+                <button
+                  type="button"
+                  className={`button button--secondary button--small ${
+                    isLocked ? 'is-disabled' : ''
+                  }`}
+                  disabled={isLocked}
+                  onClick={handleClearRequest}
+                >
+                  Clear
+                </button>
+
+                {!isLocked && (
+                  <button
+                    type="button"
+                    className="button button--primary button--small"
+                    onClick={handleOpenSubmit}
+                  >
+                    Submit
+                  </button>
+                )}
+              </div>
+            )}
 
             {ENABLE_TEST_FEATURES && !isLocked && !isDailyMode && (
               <div className="dev-tools-inline">
@@ -1658,11 +1782,12 @@ const streakAverageTime =
                     })}
                   </div>
 
-                  <span className="landmark-picker__divider" aria-hidden="true" />
+                </div>
 
+                <div className="landmark-picker__tools">
                   <button
                     type="button"
-                    className="landmark-palette__item landmark-picker__rotate"
+                    className="landmark-picker__tool"
                     disabled={isLocked || !activeFragment}
                     onClick={() => rotateActiveFragment(1)}
                     aria-label="Rotate active fragment 90 degrees clockwise"
@@ -1673,15 +1798,15 @@ const streakAverageTime =
                     >
                       rotate_right
                     </span>
+                    Rotate
                   </button>
 
                   <button
                     type="button"
-                    className="landmark-palette__item landmark-picker__remove"
+                    className="landmark-picker__tool"
                     disabled={isLocked || !activeFragment}
                     onClick={handleRemoveActive}
                     aria-label="Remove active fragment from grid"
-                    title="Remove from grid"
                   >
                     <span
                       className="material-symbols-outlined"
@@ -1689,6 +1814,7 @@ const streakAverageTime =
                     >
                       delete
                     </span>
+                    Remove
                   </button>
                 </div>
               </div>
@@ -1706,7 +1832,7 @@ const streakAverageTime =
                   type="button"
                   className={`map-grid__cell ${isLocked ? 'is-solved' : ''} ${
                     conflictCells.has(index) ? 'is-conflict' : ''
-                  }`}
+                  } ${cellColor ? '' : 'is-empty'}`}
                   style={{
                     backgroundColor: cellColor || 'rgb(142, 142, 128)',
                   }}
@@ -1735,7 +1861,35 @@ const streakAverageTime =
             </div>
 
             {activeMatrix && activePlacement && (
-              <div className="map-placement" aria-label="Active fragment">
+              <div
+                className={`map-placement ${
+                  isPlacementDragging && isRemoveZone ? 'is-removing' : ''
+                } ${
+                  spin.id === activeFragmentId &&
+                  spin.n > 0 &&
+                  twistAngle === null
+                    ? spin.n % 2
+                      ? 'is-spin-a'
+                      : 'is-spin-b'
+                    : ''
+                }`}
+                style={{
+                  transformOrigin: `${
+                    ((activePlacement.col + activeMatrix[0].length / 2) /
+                      GRID_SIZE) *
+                    100
+                  }% ${
+                    ((activePlacement.row + activeMatrix.length / 2) /
+                      GRID_SIZE) *
+                    100
+                  }%`,
+                  '--spin-from': `${spin.from}deg`,
+                  ...(twistAngle !== null
+                    ? { transform: `rotate(${twistAngle}deg)` }
+                    : {}),
+                }}
+                aria-label="Active fragment"
+              >
                 {Array.from({ length: TOTAL_CELLS }).map((_, index) => {
                   const cell =
                     activeMatrix[
@@ -1768,7 +1922,7 @@ const streakAverageTime =
             {activeFragment && (
               <div className="placement-bar">
                 <span className="placement-bar__hint">
-                  Drag to move. Click elsewhere to deselect.
+                  Drag to move, drag off the map to remove. Click elsewhere to drop.
                 </span>
 
               </div>
@@ -1779,7 +1933,7 @@ const streakAverageTime =
                 <div className="fragment-grid">
                   {orderedFragmentItems.map((item) => {
                     const isDragging = fragmentDrag?.id === item.id;
-                    const isUsed = usedFragments.includes(item.id);
+                    const isUsed = placements.some((entry) => entry.id === item.id);
 
                     return (
                       <div
@@ -1814,37 +1968,15 @@ const streakAverageTime =
                           </span>
                         )}
 
-                        <button
-                          type="button"
+                        <span
                           className={`fragment-card__used-toggle ${
                             isUsed ? 'is-active' : ''
                           }`}
-                          disabled={isLocked}
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onPointerMove={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onPointerUp={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onPointerCancel={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleUsedFragment(item.id);
-                          }}
-                          aria-pressed={isUsed}
-                          aria-label={
-                            isUsed
-                              ? 'Mark fragment as unused'
-                              : 'Mark fragment as used'
-                          }
+                          role="img"
+                          aria-label={isUsed ? 'On the map' : 'Not on the map'}
                         >
                           ✓
-                        </button>
+                        </span>
 
                         {gameplayRules.fragmentRotation && (
                           <button
@@ -1857,7 +1989,12 @@ const streakAverageTime =
                             onPointerCancel={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
-                              rotateFragmentClockwise(item.id);
+
+                              if (isUsed || activeFragmentId === item.id) {
+                                rotateFragmentBy(item.id, 1);
+                              } else {
+                                rotateFragmentClockwise(item.id);
+                              }
                             }}
                             aria-label="Rotate fragment 90 degrees clockwise"
                           >

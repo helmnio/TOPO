@@ -40,7 +40,8 @@ function BottomNav() {
           isHome ? 'is-active' : ''
         }`}
       >
-        Home
+        <span className="material-symbols-outlined bottom-nav__icon" aria-hidden="true">explore</span>
+        <span className="bottom-nav__label">Home</span>
       </Link>
 
       {/* PLAY */}
@@ -54,7 +55,8 @@ function BottomNav() {
         }`}
       >
         {/* {primaryLabel} */}
-        Game
+        <span className="material-symbols-outlined bottom-nav__icon" aria-hidden="true">map</span>
+        <span className="bottom-nav__label">Game</span>
       </Link>
 
       {/* STATS */}
@@ -64,7 +66,8 @@ function BottomNav() {
           isStats ? 'is-active' : ''
         }`}
       >
-        Stats
+        <span className="material-symbols-outlined bottom-nav__icon" aria-hidden="true">leaderboard</span>
+        <span className="bottom-nav__label">Stats</span>
       </Link>
 
       {/* EXAMPLE */}
@@ -74,7 +77,8 @@ function BottomNav() {
           isExample ? 'is-active' : ''
         }`}
       >
-        Learn
+        <span className="material-symbols-outlined bottom-nav__icon" aria-hidden="true">menu_book</span>
+        <span className="bottom-nav__label">Learn</span>
       </Link>
     </nav>
   );
