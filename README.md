@@ -37,3 +37,12 @@ non-development environment, set `VITE_ENABLE_TEST_FEATURES=true` deliberately.
 npm test
 npm run build
 ```
+
+## Theme
+
+The default look is a Great Trigonometrical Survey sheet (`src/theme/gts.css`).
+Other looks are still available: open the site with `?theme=survey` or
+`?theme=classic` (the original design); the choice is remembered in the browser.
+To change the default, set `DEFAULT_THEME` in `src/theme/index.js`. Deleting the
+`src/theme` folder and its import in `src/main.jsx` reverts the redesign
+completely.
