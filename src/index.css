@@ -2254,3 +2254,7 @@ a:focus-visible {
     animation: none;
   }
 }
+
+.game-fragments .fragment-card {
+  -webkit-touch-callout: none;
+}

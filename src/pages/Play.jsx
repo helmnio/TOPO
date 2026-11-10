@@ -838,12 +838,37 @@ function Play() {
     }
 
     if (event.pointerType === 'touch') {
-      fragmentTapRef.current = {
+      // A quick tap selects; a swipe scrolls the page; a touch held still for a
+      // moment picks the card up so it can be dragged to reorder the tray.
+      const rect = event.currentTarget.getBoundingClientRect();
+      const origin = {
         id: item.id,
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
       };
+      const timer = window.setTimeout(() => {
+        const tap = fragmentTapRef.current;
+
+        if (!tap || tap.pointerId !== origin.pointerId) return;
+
+        tap.dragging = true;
+        navigator.vibrate?.(12);
+        setFragmentDrag({
+          id: item.id,
+          pointerId: origin.pointerId,
+          startX: origin.x,
+          startY: origin.y,
+          x: origin.x,
+          y: origin.y,
+          width: rect.width,
+          height: rect.height,
+          offsetX: origin.x - rect.left,
+          offsetY: origin.y - rect.top,
+        });
+      }, 350);
+
+      fragmentTapRef.current = { ...origin, timer, dragging: false };
       return;
     }
 
@@ -866,6 +891,19 @@ function Play() {
   };
 
   const handleFragmentDragMove = (event) => {
+    const tap = fragmentTapRef.current;
+
+    if (
+      tap &&
+      tap.pointerId === event.pointerId &&
+      !tap.dragging &&
+      Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8
+    ) {
+      // the finger is swiping, so let the page scroll instead
+      window.clearTimeout(tap.timer);
+      fragmentTapRef.current = null;
+    }
+
     setFragmentDrag((current) => {
       if (!current || current.pointerId !== event.pointerId) {
         return current;
@@ -883,16 +921,24 @@ function Play() {
     const tap = fragmentTapRef.current;
 
     if (tap && tap.pointerId === event.pointerId) {
+      window.clearTimeout(tap.timer);
       fragmentTapRef.current = null;
 
-      if (
-        event.type === 'pointerup' &&
-        Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 10
-      ) {
-        handleActivateFragment(tap.id);
+      if (!tap.dragging) {
+        if (
+          event.type === 'pointerup' &&
+          Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < 10
+        ) {
+          handleActivateFragment(tap.id);
+        }
+
+        return;
       }
 
-      return;
+      if (event.type === 'pointercancel') {
+        setFragmentDrag(null);
+        return;
+      }
     }
 
     if (!fragmentDrag || fragmentDrag.pointerId !== event.pointerId) {
@@ -958,6 +1004,21 @@ function Play() {
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
+  // While a card is being dragged by touch, the page must not scroll under it.
+  const isTrayDragging = Boolean(fragmentDrag);
+
+  useEffect(() => {
+    if (!isTrayDragging) return undefined;
+
+    const stopScroll = (event) => {
+      if (event.cancelable) event.preventDefault();
+    };
+
+    window.addEventListener('touchmove', stopScroll, { passive: false });
+
+    return () => window.removeEventListener('touchmove', stopScroll);
+  }, [isTrayDragging]);
+
   const handleCellClick = (index) => {
     if (isLocked) return;
 
@@ -966,6 +1027,8 @@ function Play() {
 
       if (owner && owner.id !== activeFragmentId) {
         handleActivateFragment(owner.id);
+      } else {
+        handlePlaceActiveFragment();
       }
 
       return;
@@ -1339,8 +1402,10 @@ function Play() {
 
   const removeActiveRef = useRef(handleRemoveActive);
   const keyboardRef = useRef(null);
+  const commitActiveRef = useRef(handlePlaceActiveFragment);
 
   useEffect(() => {
+    commitActiveRef.current = handlePlaceActiveFragment;
     removeActiveRef.current = handleRemoveActive;
     keyboardRef.current = {
       move: (rowStep, colStep) => {
@@ -1393,6 +1458,30 @@ function Play() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeFragmentId]);
+
+  // A tap anywhere else puts the selected fragment down. Swipes and scrolls
+  // don't produce a click, so scrolling over the map leaves it selected.
+  useEffect(() => {
+    if (!activeFragmentId) return undefined;
+
+    const handleOutsideClick = (event) => {
+      if (!(event.target instanceof Element)) return;
+
+      if (
+        event.target.closest(
+          '.map-placement, .map-grid, .fragment-card, .landmark-picker__tool'
+        )
+      ) {
+        return;
+      }
+
+      commitActiveRef.current();
+    };
+
+    document.addEventListener('click', handleOutsideClick);
+
+    return () => document.removeEventListener('click', handleOutsideClick);
   }, [activeFragmentId]);
 
   const handleOpenSubmit = () => {
@@ -1942,7 +2031,7 @@ const streakAverageTime =
             {activeFragment && (
               <div className="placement-bar">
                 <span className="placement-bar__hint">
-                  Drag to move, drag off the map to remove. Tap the fragment again to put it down.
+                  Drag to move, drag off the map to remove. Tap anywhere else to put it down.
                 </span>
 
               </div>
