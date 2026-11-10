@@ -537,7 +537,7 @@
     border-style: dashed;
   }
 
-  /* ---------- fragment plates ---------- */
+  /* ---------- fragment cards ---------- */
 
   .fragment-panel {
     padding: 0;
@@ -565,7 +565,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fig. ' counter(fig);
+    content: 'Fragment ' counter(fig);
     position: absolute;
     left: 6px;
     bottom: 5px;

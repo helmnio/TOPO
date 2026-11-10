@@ -341,6 +341,7 @@ function Play() {
   });
   const placementsRef = useRef(placements);
   const [armedLandmarkId, setArmedLandmarkId] = useState(null);
+  const placedIdsRef = useRef(new Set(placements.map((entry) => entry.id)));
   const [history, setHistory] = useState(initialSession?.history || []);
   const [isSolved, setIsSolved] = useState(initialSession?.isSolved || false);
 
@@ -471,6 +472,7 @@ function Play() {
       setIsPlacementDragging(false);
 
       if (removeZoneRef.current) removeActiveRef.current();
+      else setCommitTick((tick) => tick + 1);
 
       removeZoneRef.current = false;
       setIsRemoveZone(false);
@@ -486,6 +488,25 @@ function Play() {
       window.removeEventListener('pointercancel', handleEnd);
     };
   }, [isPlacementDragging]);
+
+  useEffect(() => {
+    const placedIds = new Set(placements.map((entry) => entry.id));
+    const before = placedIdsRef.current;
+    const newlyPlaced = [...placedIds].filter((id) => !before.has(id));
+    const newlyRemoved = [...before].filter((id) => !placedIds.has(id));
+
+    placedIdsRef.current = placedIds;
+
+    if (!newlyPlaced.length && !newlyRemoved.length) return;
+
+    setFragmentOrder((current) => [
+      ...newlyRemoved.filter((id) => current.includes(id)),
+      ...current.filter(
+        (id) => !newlyPlaced.includes(id) && !newlyRemoved.includes(id)
+      ),
+      ...newlyPlaced.filter((id) => current.includes(id)),
+    ]);
+  }, [placements]);
 
   const orderedFragmentItems = useMemo(() => {
     const fragmentMap = new Map(fragmentItems.map((item) => [item.id, item]));
@@ -945,8 +966,6 @@ function Play() {
 
       if (owner && owner.id !== activeFragmentId) {
         handleActivateFragment(owner.id);
-      } else {
-        handlePlaceActiveFragment();
       }
 
       return;
@@ -1054,6 +1073,7 @@ function Play() {
       from: fromDeg ?? -90 * signed,
       n: current.n + 1,
     }));
+    setCommitTick((tick) => tick + 1);
   };
 
   const rotateActiveFragment = (steps = 1, fromDeg = null) => {
@@ -1184,7 +1204,7 @@ function Play() {
     setIsPlacementDragging(true);
   };
 
-  const handlePlaceActiveFragment = () => {
+  const handlePlaceActiveFragment = (keepSelected = false) => {
     if (!activeFragment || !activePlacement || isLocked) return;
 
     if (
@@ -1193,7 +1213,7 @@ function Play() {
       activePlacedEntry.col === activePlacement.col &&
       activePlacedEntry.rotation === activeRotation
     ) {
-      setActiveFragmentId(null);
+      if (keepSelected !== true) setActiveFragmentId(null);
       return;
     }
 
@@ -1210,9 +1230,18 @@ function Play() {
     pushHistory();
     setPlacements(next);
     setMapCells(paintPlacements(next, fragmentItems, answer));
-    setActiveFragmentId(null);
+    if (keepSelected !== true) setActiveFragmentId(null);
     setCheckMessage('');
   };
+
+  // Moving or turning the selected fragment places it on the map right away
+  // and leaves it selected, so it can be nudged again without picking it up.
+  const [commitTick, setCommitTick] = useState(0);
+
+  useEffect(() => {
+    if (commitTick > 0) handlePlaceActiveFragment(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commitTick]);
 
   const handleRemoveActive = () => {
     if (!activeFragment || isLocked) return;
@@ -1298,10 +1327,8 @@ function Play() {
 
   const removeActiveRef = useRef(handleRemoveActive);
   const keyboardRef = useRef(null);
-  const commitActiveRef = useRef(handlePlaceActiveFragment);
 
   useEffect(() => {
-    commitActiveRef.current = handlePlaceActiveFragment;
     removeActiveRef.current = handleRemoveActive;
     keyboardRef.current = {
       move: (rowStep, colStep) => {
@@ -1311,6 +1338,7 @@ function Play() {
           row: activePlacement.row + rowStep,
           col: activePlacement.col + colStep,
         });
+        setCommitTick((tick) => tick + 1);
       },
       rotate: rotateActiveFragment,
       remove: handleRemoveActive,
@@ -1355,32 +1383,12 @@ function Play() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeFragmentId]);
 
-  useEffect(() => {
-    if (!activeFragmentId) return undefined;
-
-    const handleOutsideClick = (event) => {
-      if (!(event.target instanceof Element)) return;
-
-      if (
-        event.target.closest(
-          '.map-placement, .map-grid, .fragment-card, .landmark-picker__tool'
-        )
-      ) {
-        return;
-      }
-
-      commitActiveRef.current();
-    };
-
-    document.addEventListener('click', handleOutsideClick);
-
-    return () => document.removeEventListener('click', handleOutsideClick);
-  }, [activeFragmentId]);
-
   const handleOpenSubmit = () => {
     if (isLocked) {
       return;
     }
+
+    handlePlaceActiveFragment();
 
     setShowSubmitConfirm(true);
   };
@@ -1922,7 +1930,7 @@ const streakAverageTime =
             {activeFragment && (
               <div className="placement-bar">
                 <span className="placement-bar__hint">
-                  Drag to move, drag off the map to remove. Click elsewhere to drop.
+                  Drag to move, drag off the map to remove. Tap the fragment again to put it down.
                 </span>
 
               </div>
