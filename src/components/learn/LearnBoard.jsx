@@ -77,6 +77,27 @@ function LearnBoard() {
     Array(TOTAL_CELLS).fill(null)
   );
   const [revealedHintIds, setRevealedHintIds] = useState([]);
+  const [order, setOrder] = useState(() => fragments.map((item) => item.id));
+  const placedIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const placedIds = new Set(placements.map((entry) => entry.id));
+    const before = placedIdsRef.current;
+    const newlyPlaced = [...placedIds].filter((id) => !before.has(id));
+    const newlyRemoved = [...before].filter((id) => !placedIds.has(id));
+
+    placedIdsRef.current = placedIds;
+
+    if (!newlyPlaced.length && !newlyRemoved.length) return;
+
+    setOrder((current) => [
+      ...newlyRemoved.filter((id) => current.includes(id)),
+      ...current.filter(
+        (id) => !newlyPlaced.includes(id) && !newlyRemoved.includes(id)
+      ),
+      ...newlyPlaced.filter((id) => current.includes(id)),
+    ]);
+  }, [placements]);
 
   const visibleLandmarks = useMemo(
     () =>
@@ -142,7 +163,7 @@ function LearnBoard() {
     return conflicts;
   }, [activeMatrix, activePosition, displayCells]);
 
-  const commit = () => {
+  const commit = (keepSelected = false) => {
     if (!activeFragment || !activePosition) return;
 
     if (
@@ -151,7 +172,7 @@ function LearnBoard() {
       activePlaced.col === activePosition.col &&
       activePlaced.rotation === activeRotation
     ) {
-      setActiveId(null);
+      if (keepSelected !== true) setActiveId(null);
       return;
     }
 
@@ -164,8 +185,17 @@ function LearnBoard() {
         rotation: activeRotation,
       },
     ]);
-    setActiveId(null);
+    if (keepSelected !== true) setActiveId(null);
   };
+
+  // Moving or turning the selected fragment places it right away and leaves
+  // it selected.
+  const [commitTick, setCommitTick] = useState(0);
+
+  useEffect(() => {
+    if (commitTick > 0) commit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commitTick]);
 
   const removeActive = () => {
     if (!activeFragment) return;
@@ -249,6 +279,7 @@ function LearnBoard() {
       from: fromDeg ?? -90 * signed,
       n: current.n + 1,
     }));
+    setCommitTick((tick) => tick + 1);
   };
 
   const rotateActive = (steps = 1, fromDeg = null) => {
@@ -267,7 +298,6 @@ function LearnBoard() {
       const owner = findPlacementAt(placements, index, fragments, answer);
 
       if (owner && owner.id !== activeId) activate(owner.id);
-      else commit();
 
       return;
     }
@@ -334,6 +364,7 @@ function LearnBoard() {
           row: activePosition.row + rowStep,
           col: activePosition.col + colStep,
         });
+        setCommitTick((tick) => tick + 1);
       },
     };
   });
@@ -374,6 +405,7 @@ function LearnBoard() {
       setIsDragging(false);
 
       if (removeZoneRef.current) latest.current.removeActive();
+      else setCommitTick((tick) => tick + 1);
 
       removeZoneRef.current = false;
       setIsRemoveZone(false);
@@ -404,17 +436,6 @@ function LearnBoard() {
       return (
         (Math.atan2(second.y - first.y, second.x - first.x) * 180) / Math.PI
       );
-    };
-
-    const handleClick = (event) => {
-      if (
-        event.target instanceof Element &&
-        !event.target.closest(
-          '.map-placement, .map-grid, .fragment-card, .learn-board__tool'
-        )
-      ) {
-        latest.current.commit();
-      }
     };
 
     const handleDown = (event) => {
@@ -488,7 +509,6 @@ function LearnBoard() {
       }
     };
 
-    document.addEventListener('click', handleClick);
     window.addEventListener('pointerdown', handleDown);
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', handleUp);
@@ -496,7 +516,6 @@ function LearnBoard() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.removeEventListener('click', handleClick);
       window.removeEventListener('pointerdown', handleDown);
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
@@ -703,7 +722,7 @@ function LearnBoard() {
       {activeFragment && (
         <div className="placement-bar">
           <span className="placement-bar__hint">
-            Drag to move, drag off the map to remove. Click elsewhere to drop.
+            Drag to move, drag off the map to remove. Tap the fragment again to put it down.
           </span>
         </div>
       )}
@@ -711,7 +730,10 @@ function LearnBoard() {
       <div className="game-fragments">
         <div className="fragment-panel">
           <div className="fragment-grid">
-            {fragments.map((item) => {
+            {order
+              .map((id) => fragments.find((item) => item.id === id))
+              .filter(Boolean)
+              .map((item) => {
               const isUsed = placements.some((entry) => entry.id === item.id);
               const rotation = rotations[item.id] || 0;
 

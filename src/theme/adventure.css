@@ -539,7 +539,7 @@
     border-style: dashed;
   }
 
-  /* ---------- fragment plates ---------- */
+  /* ---------- fragment cards ---------- */
 
   .fragment-panel {
     padding: 0;
@@ -567,7 +567,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fig. ' counter(fig);
+    content: 'Fragment ' counter(fig);
     position: absolute;
     left: 6px;
     bottom: 5px;
@@ -958,7 +958,7 @@
     font-size: 19px;
   }
 
-  /* ---------- buttons: a plate with an engraved inner line ---------- */
+  /* ---------- buttons: an engraved inner line ---------- */
 
   .button {
     font-size: 15px;
@@ -1023,7 +1023,7 @@
     content: none;
   }
 
-  /* ---------- the map: graduated border like a survey sheet neat line ---------- */
+  /* ---------- the map: one dashed neat line, a dash on every corner ---------- */
 
   .map-board {
     padding: var(--board-pad);
@@ -1031,15 +1031,7 @@
     border: 1px solid var(--ink);
     outline: 1px solid var(--ink);
     outline-offset: 4px;
-    background:
-      repeating-linear-gradient(90deg, var(--ink) 0 9px, var(--paper-hi) 9px 18px)
-        left 7px top 7px / calc(100% - 14px) 5px no-repeat,
-      repeating-linear-gradient(90deg, var(--ink) 0 9px, var(--paper-hi) 9px 18px)
-        left 7px bottom 7px / calc(100% - 14px) 5px no-repeat,
-      repeating-linear-gradient(0deg, var(--ink) 0 9px, var(--paper-hi) 9px 18px)
-        left 7px top 7px / 5px calc(100% - 14px) no-repeat,
-      repeating-linear-gradient(0deg, var(--ink) 0 9px, var(--paper-hi) 9px 18px)
-        right 7px top 7px / 5px calc(100% - 14px) no-repeat,
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect x='2.8' y='2.8' width='94.4' height='94.4' fill='none' stroke='%232b1d10' stroke-width='1.5' pathLength='136' stroke-dasharray='1 1' stroke-dashoffset='0.5' stroke-linejoin='miter'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
       var(--paper-hi);
   }
 
@@ -1063,7 +1055,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Plate ' counter(fig, upper-roman);
+    content: 'Fragment ' counter(fig);
     font-size: 13px;
     color: var(--ink-2);
   }
@@ -1168,9 +1160,28 @@
       radial-gradient(ellipse at 50% 0%, #2f2014, var(--desk) 72%);
   }
 
-  /* tea-stained, folded paper with coffee rings and burnt edges */
+  /* tea-stained, folded paper with coffee rings and burnt edges. The paper is
+     one fixed layer behind the page, so it never scrolls, moves or repaints
+     while you scroll (scrolling backgrounds and big inset shadows are what made
+     mobile browsers flicker). */
   .page__inner,
   .page__content {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .page::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    z-index: 0;
+    width: min(520px, 100%);
+    transform: translateX(-50%);
+    pointer-events: none;
     background:
       linear-gradient(
         90deg,
@@ -1180,13 +1191,13 @@
         rgba(255, 240, 200, 0.3) calc(50% + 1px),
         transparent calc(50% + 6px)
       ),
-      repeating-linear-gradient(
+      linear-gradient(
         0deg,
-        transparent 0 458px,
-        rgba(60, 34, 10, 0.1) 458px 459px,
-        rgba(60, 34, 10, 0.24) 459px 460px,
-        rgba(255, 240, 200, 0.3) 460px 461px,
-        transparent 461px 466px
+        transparent calc(50% - 6px),
+        rgba(60, 34, 10, 0.1) calc(50% - 1px),
+        rgba(60, 34, 10, 0.24) 50%,
+        rgba(255, 240, 200, 0.3) calc(50% + 1px),
+        transparent calc(50% + 6px)
       ),
       radial-gradient(circle at 84% 11%, transparent 0 30px, rgba(105, 62, 22, 0.24) 31px 33px, rgba(105, 62, 22, 0.08) 34px 44px, transparent 45px),
       radial-gradient(circle at 14% 64%, transparent 0 24px, rgba(105, 62, 22, 0.2) 25px 27px, rgba(105, 62, 22, 0.07) 28px 36px, transparent 37px),
@@ -1196,12 +1207,15 @@
       radial-gradient(circle at 78% 94%, rgba(130, 80, 25, 0.2) 0 22px, transparent 62px),
       repeating-linear-gradient(0deg, rgba(90, 60, 30, 0.05) 0 1px, transparent 1px 3px),
       var(--paper);
-    background-attachment: local;
     box-shadow: inset 0 0 130px rgba(75, 38, 8, 0.5);
   }
 
   @media (min-width: 431px) {
     .page__inner {
+      box-shadow: none;
+    }
+
+    .page::before {
       box-shadow:
         inset 0 0 130px rgba(75, 38, 8, 0.5),
         0 0 0 1px #000,
@@ -1433,6 +1447,26 @@
     -webkit-text-stroke: 0;
     filter: none;
     transform: none;
+  }
+
+  /* pale squares (the yellows especially) need an edge to stand out from the
+     parchment and from empty ground */
+  .map-grid__cell:not(.is-empty),
+  .result-map-grid__cell {
+    box-shadow: inset 0 0 0 1px rgba(27, 18, 8, 0.55);
+  }
+
+  .fragment-shape__cell:not(.is-empty) {
+    box-shadow: inset 0 0 0 1px rgba(27, 18, 8, 0.6);
+  }
+
+  .map-grid__cell.is-empty {
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(95, 66, 38, 0.7) 0 1px,
+        var(--paper-lo) 1px 5px
+      ) !important;
   }
 
   /* wrong overlaps: a bold red frame and red hatching, like an error flagged
