@@ -1160,12 +1160,24 @@ function Play() {
       }
     };
 
+    const blockScroll = (event) => {
+      if (
+        event.touches.length >= 2 &&
+        event.target instanceof Element &&
+        event.target.closest('.map-board')
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('touchmove', blockScroll, { passive: false });
     window.addEventListener('pointerdown', handleDown);
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', handleUp);
     window.addEventListener('pointercancel', handleUp);
 
     return () => {
+      window.removeEventListener('touchmove', blockScroll);
       window.removeEventListener('pointerdown', handleDown);
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);

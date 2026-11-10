@@ -97,6 +97,7 @@ function Stats() {
     <div className="page page--stats">
       <div className="page__inner">
         <main className="page__content">
+        <div className="paper">
           <section className="hero-card">
             <p className="eyebrow">Progress</p>
             <h1 className="hero-title">Stats</h1>
@@ -255,6 +256,7 @@ function Stats() {
               </div>
             </div>
           </section>
+        </div>
         </main>
 
         <BottomNav />
