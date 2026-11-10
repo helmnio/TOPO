@@ -2134,9 +2134,6 @@ a:focus-visible {
     inset 0 0 0 5px rgba(255, 255, 255, 0.55);
 }
 
-.play-surface--placing .map-board {
-  touch-action: none;
-}
 
 .map-placement.is-removing .map-placement__cell.is-filled {
   opacity: 0.45;

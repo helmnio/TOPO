@@ -223,7 +223,9 @@ const todayShareText =
 
   return (
     <div className="page page--home">
-      <main className="page__content page__inner app-shell">
+      <div className="page__inner">
+      <main className="page__content app-shell">
+      <div className="paper">
         <section className="hero-card">
           <p className="eyebrow">Daily map puzzle</p>
 
@@ -368,7 +370,9 @@ const todayShareText =
             View all stats
           </Link>
         </section>
+      </div>
       </main>
+      </div>
 
       <BottomNav />
     </div>

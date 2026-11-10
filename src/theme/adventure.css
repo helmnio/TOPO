@@ -1023,7 +1023,7 @@
     content: none;
   }
 
-  /* ---------- the map: one dashed neat line, a dash on every corner ---------- */
+  /* ---------- the map: a dashed neat line ---------- */
 
   .map-board {
     padding: var(--board-pad);
@@ -1031,8 +1031,17 @@
     border: 1px solid var(--ink);
     outline: 1px solid var(--ink);
     outline-offset: 4px;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect x='2.8' y='2.8' width='94.4' height='94.4' fill='none' stroke='%232b1d10' stroke-width='1.5' pathLength='136' stroke-dasharray='1 1' stroke-dashoffset='0.5' stroke-linejoin='miter'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
-      var(--paper-hi);
+    background: var(--paper-hi);
+  }
+
+  /* the dashed neat line: a real dashed border, inset from the edge, with its
+     width in vw so the dashes scale with the screen */
+  .map-board::before {
+    content: '';
+    position: absolute;
+    inset: 7px;
+    border: clamp(4px, 1.4vw, 6px) dashed var(--ink);
+    pointer-events: none;
   }
 
   .map-grid {
@@ -1160,10 +1169,9 @@
       radial-gradient(ellipse at 50% 0%, #2f2014, var(--desk) 72%);
   }
 
-  /* tea-stained, folded paper with coffee rings and burnt edges. The paper is
-     one fixed layer behind the page, so it never scrolls, moves or repaints
-     while you scroll (scrolling backgrounds and big inset shadows are what made
-     mobile browsers flicker). */
+  /* tea-stained, folded paper. The paper is an ordinary block inside the
+     scrolling page, so it scrolls with the text and content. Only the dark
+     edges (the vignette) are a fixed, static overlay that never repaints. */
   .page__inner,
   .page__content {
     position: relative;
@@ -1172,16 +1180,17 @@
     box-shadow: none;
   }
 
-  .page::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    z-index: 0;
-    width: min(520px, 100%);
-    transform: translateX(-50%);
-    pointer-events: none;
+  .page__content {
+    padding: 0;
+  }
+
+  .paper {
+    min-height: 100%;
+    padding: 20px 16px 104px;
+  }
+
+  .paper,
+  .play-shell {
     background:
       linear-gradient(
         90deg,
@@ -1191,22 +1200,32 @@
         rgba(255, 240, 200, 0.3) calc(50% + 1px),
         transparent calc(50% + 6px)
       ),
-      linear-gradient(
+      repeating-linear-gradient(
         0deg,
-        transparent calc(50% - 6px),
-        rgba(60, 34, 10, 0.1) calc(50% - 1px),
-        rgba(60, 34, 10, 0.24) 50%,
-        rgba(255, 240, 200, 0.3) calc(50% + 1px),
-        transparent calc(50% + 6px)
+        transparent 0 458px,
+        rgba(60, 34, 10, 0.1) 458px 459px,
+        rgba(60, 34, 10, 0.24) 459px 460px,
+        rgba(255, 240, 200, 0.3) 460px 461px,
+        transparent 461px 466px
       ),
-      radial-gradient(circle at 84% 11%, transparent 0 30px, rgba(105, 62, 22, 0.24) 31px 33px, rgba(105, 62, 22, 0.08) 34px 44px, transparent 45px),
-      radial-gradient(circle at 14% 64%, transparent 0 24px, rgba(105, 62, 22, 0.2) 25px 27px, rgba(105, 62, 22, 0.07) 28px 36px, transparent 37px),
-      radial-gradient(circle at 18% 6%, rgba(130, 80, 25, 0.22) 0 20px, transparent 56px),
-      radial-gradient(circle at 92% 38%, rgba(130, 80, 25, 0.18) 0 26px, transparent 70px),
-      radial-gradient(circle at 26% 78%, rgba(130, 80, 25, 0.16) 0 30px, transparent 80px),
-      radial-gradient(circle at 78% 94%, rgba(130, 80, 25, 0.2) 0 22px, transparent 62px),
       repeating-linear-gradient(0deg, rgba(90, 60, 30, 0.05) 0 1px, transparent 1px 3px),
       var(--paper);
+  }
+
+  .page::before {
+    content: none;
+  }
+
+  .page::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    z-index: 2;
+    width: min(520px, 100%);
+    transform: translateX(-50%);
+    pointer-events: none;
     box-shadow: inset 0 0 130px rgba(75, 38, 8, 0.5);
   }
 
@@ -1215,7 +1234,7 @@
       box-shadow: none;
     }
 
-    .page::before {
+    .page::after {
       box-shadow:
         inset 0 0 130px rgba(75, 38, 8, 0.5),
         0 0 0 1px #000,
