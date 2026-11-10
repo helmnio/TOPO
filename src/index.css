@@ -602,7 +602,7 @@ a:focus-visible {
 
 .game-fragments {
   position: relative;
-  margin-top: 22px;
+  margin-top: 20px;
   padding-bottom: 22px;
 }
 
@@ -2105,15 +2105,19 @@ a:focus-visible {
 .placement-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 10px 0;
+  justify-content: center;
+  min-height: 52px;
+  margin: 0;
+  padding: 4px 0;
+  text-align: center;
 }
 
+/* shown while a fragment is selected: the tray moves down to make room */
 .placement-bar__hint {
+  min-width: 0;
   font-size: 0.85rem;
   color: var(--text-soft);
+  line-height: 1.3;
 }
 
 .placement-bar__actions {
