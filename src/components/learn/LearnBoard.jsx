@@ -298,6 +298,7 @@ function LearnBoard() {
       const owner = findPlacementAt(placements, index, fragments, answer);
 
       if (owner && owner.id !== activeId) activate(owner.id);
+      else commit();
 
       return;
     }
@@ -438,6 +439,18 @@ function LearnBoard() {
       );
     };
 
+    // A tap anywhere else puts the piece down; a swipe or scroll does not.
+    const handleClick = (event) => {
+      if (
+        event.target instanceof Element &&
+        !event.target.closest(
+          '.map-placement, .map-grid, .fragment-card, .learn-board__tool'
+        )
+      ) {
+        latest.current.commit();
+      }
+    };
+
     const handleDown = (event) => {
       if (
         event.pointerType !== 'touch' ||
@@ -519,6 +532,7 @@ function LearnBoard() {
       }
     };
 
+    document.addEventListener('click', handleClick);
     window.addEventListener('touchmove', blockScroll, { passive: false });
     window.addEventListener('pointerdown', handleDown);
     window.addEventListener('pointermove', handleMove);
@@ -527,6 +541,7 @@ function LearnBoard() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      document.removeEventListener('click', handleClick);
       window.removeEventListener('touchmove', blockScroll);
       window.removeEventListener('pointerdown', handleDown);
       window.removeEventListener('pointermove', handleMove);
@@ -734,7 +749,7 @@ function LearnBoard() {
       {activeFragment && (
         <div className="placement-bar">
           <span className="placement-bar__hint">
-            Drag to move, drag off the map to remove. Tap the fragment again to put it down.
+            Drag to move, drag off the map to remove. Tap anywhere else to put it down.
           </span>
         </div>
       )}
