@@ -273,11 +273,26 @@ a:focus-visible {
 }
 
 .today-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
   color: var(--text-soft);
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* a fixed layout: status on its own line, then time and the countdown on one,
+   so the ticking digits can never change how the line wraps */
+.today-card__meta > * {
+  white-space: nowrap;
+}
+
+.today-card__meta > :first-child {
+  grid-column: 1 / -1;
+}
+
+.today-card__meta > :last-child {
+  text-align: right;
 }
 
 .stats-preview,

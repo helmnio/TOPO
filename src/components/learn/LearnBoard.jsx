@@ -771,6 +771,9 @@ function LearnBoard() {
                     activeId === item.id ? 'is-active' : ''
                   }`}
                   data-fragment-id={item.id}
+                  data-number={
+                    fragments.findIndex((entry) => entry.id === item.id) + 1
+                  }
                   onClick={() => activate(item.id)}
                 >
                   {item.id === northFragmentId && (

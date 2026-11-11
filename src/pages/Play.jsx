@@ -2062,6 +2062,9 @@ const streakAverageTime =
                           activeFragmentId === item.id ? 'is-active' : ''
                         }`}
                         data-fragment-id={item.id}
+                        data-number={
+                          fragmentItems.findIndex((entry) => entry.id === item.id) + 1
+                        }
                         onPointerDown={(event) =>
                           handleFragmentDragStart(event, item)
                         }

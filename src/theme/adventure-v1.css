@@ -1,17 +1,18 @@
 /*
- * TOPO "adventure map" theme.
+ * TOPO "adventure map" theme, version v1.
+ * Frozen copy of the adventure look as it was on 2026-11-11. Do not edit; make changes in adventure-v2.css.
  *
  * A tea-stained, folded working map sheet: burnt edges, coffee rings, ruler
  * section rules, a a numbered map grid in the hero, typewriter figures,
  * handwritten notes, map pieces taped down and a dark leather tab bar. Built on the GTS theme.
- * Scoped to html[data-theme='adventure'].
+ * Scoped to html[data-theme='adventure-v1'].
  *
  * Revert: ?theme=gts, ?theme=survey or ?theme=classic (remembered), or change
  * DEFAULT_THEME in src/theme/index.js, or delete this file and its import there.
  */
 
 
-:root[data-theme='adventure'] {
+:root[data-theme='adventure-v1'] {
   --paper: #dcc592;
   --paper-hi: #e9d6a6;
   --paper-lo: #c9ae78;
@@ -567,7 +568,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fragment ' counter(fig);
+    content: 'Fragment ' attr(data-number);
     position: absolute;
     left: 6px;
     bottom: 5px;
@@ -1064,7 +1065,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fragment ' counter(fig);
+    content: 'Fragment ' attr(data-number);
     font-size: 13px;
     color: var(--ink-2);
   }

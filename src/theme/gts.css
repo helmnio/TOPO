@@ -566,7 +566,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fragment ' counter(fig);
+    content: 'Fragment ' attr(data-number);
     position: absolute;
     left: 6px;
     bottom: 5px;
@@ -1063,7 +1063,7 @@
   }
 
   .game-fragments .fragment-card::before {
-    content: 'Fragment ' counter(fig);
+    content: 'Fragment ' attr(data-number);
     font-size: 13px;
     color: var(--ink-2);
   }
